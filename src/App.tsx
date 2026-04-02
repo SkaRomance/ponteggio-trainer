@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, PerspectiveCamera } from '@react-three/drei';
 import { IntlProvider, FormattedMessage } from 'react-intl';
@@ -11,6 +11,7 @@ import ScoreDisplay from './components/ui/ScoreDisplay';
 import PhaseSelector from './components/ui/PhaseSelector';
 import LanguageSelector from './components/ui/LanguageSelector';
 import ControlsHelp from './components/game/ControlsHelp';
+import VideoTutorial, { TutorialMenu } from './components/game/VideoTutorial';
 
 // Scenes
 import WarehouseScene from './scenes/WarehouseScene';
@@ -18,6 +19,8 @@ import WarehouseScene from './scenes/WarehouseScene';
 function App() {
   const { locale, currentHealth, isPlaying, resetGame } = useGameStore();
   const isGameOver = !isPlaying && currentHealth <= 0;
+  const [showTutorialMenu, setShowTutorialMenu] = useState(false);
+  const [currentTutorial, setCurrentTutorial] = useState<string | null>(null);
 
   // Apply RTL direction and font for Arabic
   useEffect(() => {
@@ -64,6 +67,12 @@ function App() {
         {/* Phase Navigation */}
         <nav className="phase-nav">
           <PhaseSelector />
+          <button 
+            className="tutorial-btn"
+            onClick={() => setShowTutorialMenu(true)}
+          >
+            <FormattedMessage id="tutorial.button" defaultMessage="📹 Tutorial" />
+          </button>
         </nav>
 
         {/* 3D Scene */}
@@ -98,6 +107,27 @@ function App() {
         <div className="instructions-panel">
           <ControlsHelp />
         </div>
+
+        {/* Tutorial Menu */}
+        {showTutorialMenu && (
+          <TutorialMenu 
+            onSelect={(id) => {
+              setCurrentTutorial(id);
+              setShowTutorialMenu(false);
+            }}
+            onClose={() => setShowTutorialMenu(false)}
+          />
+        )}
+
+        {/* Video Tutorial Player */}
+        {currentTutorial && (
+          <VideoTutorial
+            videoId={currentTutorial}
+            title="Tutorial"
+            onClose={() => setCurrentTutorial(null)}
+            onComplete={() => console.log('Tutorial completato!')}
+          />
+        )}
       </div>
     </IntlProvider>
   );

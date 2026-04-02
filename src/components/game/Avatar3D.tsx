@@ -1,70 +1,64 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Vector3, Group } from 'three';
-import { Box, Cylinder, Sphere } from '@react-three/drei';
+import { Box, Cylinder, Sphere, Text } from '@react-three/drei';
 
 interface Avatar3DProps {
   position?: [number, number, number];
   hasHelmet?: boolean;
   hasHarness?: boolean;
   hasGloves?: boolean;
+  onMove?: (position: Vector3) => void;
 }
+
+// Export the interface
+export type { Avatar3DProps };
+
+// Animation states
+type AnimationState = 'idle' | 'walking' | 'lifting' | 'inspecting' | 'climbing';
 
 export default function Avatar3D({ 
   position = [0, 0, 0], 
   hasHelmet = true,
   hasHarness = true,
-  hasGloves = true 
+  hasGloves = true,
+  onMove
 }: Avatar3DProps) {
   const groupRef = useRef<Group>(null);
   const { camera } = useThree();
   const [currentPos, setCurrentPos] = useState(new Vector3(...position));
-  const [targetPos, setTargetPos] = useState<Vector3 | null>(null);
-  const [isMoving, setIsMoving] = useState(false);
+  // Target position for click-to-move (future feature)
+  const [animState, setAnimState] = useState<AnimationState>('idle');
   const [walkCycle, setWalkCycle] = useState(0);
+  const [liftProgress, setLiftProgress] = useState(0);
+  const [isLifting, setIsLifting] = useState(false);
+  const [showPostureWarning, setShowPostureWarning] = useState(false);
+  const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set());
   
-  // Movement speed
   const speed = 0.08;
+  const rotationSpeed = 0.1;
   
-  // Keyboard controls
+  // Keyboard controls with smooth movement
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!groupRef.current) return;
-      
-      const forward = new Vector3(0, 0, 1).applyQuaternion(groupRef.current.quaternion);
-      const right = new Vector3(1, 0, 0).applyQuaternion(groupRef.current.quaternion);
-      
-      let moveDir = new Vector3();
-      
-      switch(e.key.toLowerCase()) {
-        case 'w':
-        case 'arrowup':
-          moveDir.add(forward);
-          break;
-        case 's':
-        case 'arrowdown':
-          moveDir.sub(forward);
-          break;
-        case 'a':
-        case 'arrowleft':
-          moveDir.sub(right);
-          break;
-        case 'd':
-        case 'arrowright':
-          moveDir.add(right);
-          break;
+      const key = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        setKeysPressed(prev => new Set(prev).add(key));
       }
-      
-      if (moveDir.length() > 0) {
-        moveDir.normalize().multiplyScalar(speed);
-        setTargetPos(currentPos.clone().add(moveDir));
-        setIsMoving(true);
+      // Lift action
+      if (key === 'e' && !isLifting) {
+        setIsLifting(true);
+        setAnimState('lifting');
       }
     };
     
-    const handleKeyUp = () => {
-      setIsMoving(false);
-      setTargetPos(null);
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      setKeysPressed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(key);
+        return newSet;
+      });
     };
     
     window.addEventListener('keydown', handleKeyDown);
@@ -74,156 +68,247 @@ export default function Avatar3D({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [currentPos, speed]);
+  }, [isLifting]);
   
-  // Click to move
-  // Click-to-move: TODO implementare con raycaster
-  // Per ora solo controlli WASD
-  
-  // Animation and movement
+  // Movement and animation loop
   useFrame((state, delta) => {
     if (!groupRef.current) return;
     
-    // Movement
-    if (targetPos && isMoving) {
-      const direction = targetPos.clone().sub(currentPos);
-      const distance = direction.length();
+    // Calculate movement direction from keys
+    let moveX = 0;
+    let moveZ = 0;
+    
+    if (keysPressed.has('w') || keysPressed.has('arrowup')) moveZ -= 1;
+    if (keysPressed.has('s') || keysPressed.has('arrowdown')) moveZ += 1;
+    if (keysPressed.has('a') || keysPressed.has('arrowleft')) moveX -= 1;
+    if (keysPressed.has('d') || keysPressed.has('arrowright')) moveX += 1;
+    
+    const isMoving = moveX !== 0 || moveZ !== 0;
+    
+    // Movement logic
+    if (isMoving && animState !== 'lifting') {
+      setAnimState('walking');
       
-      if (distance > 0.1) {
-        direction.normalize().multiplyScalar(speed);
-        const newPos = currentPos.clone().add(direction);
-        setCurrentPos(newPos);
-        groupRef.current.position.copy(newPos);
-        
-        // Rotate towards movement direction
-        const angle = Math.atan2(direction.x, direction.z);
-        groupRef.current.rotation.y = angle;
-        
-        // Walking animation
-        setWalkCycle(prev => prev + delta * 10);
-      } else {
-        setIsMoving(false);
-        setTargetPos(null);
-        setWalkCycle(0);
-      }
+      const moveDir = new Vector3(moveX, 0, moveZ).normalize();
+      const newPos = currentPos.clone().add(moveDir.multiplyScalar(speed));
+      setCurrentPos(newPos);
+      groupRef.current.position.copy(newPos);
+      
+      // Smooth rotation towards movement direction
+      const targetRotation = Math.atan2(moveDir.x, moveDir.z);
+      let currentRotation = groupRef.current.rotation.y;
+      
+      // Smooth interpolation for rotation
+      let diff = targetRotation - currentRotation;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      
+      groupRef.current.rotation.y += diff * rotationSpeed;
+      
+      // Walking animation cycle
+      setWalkCycle(prev => prev + delta * 8);
+      
+      // Notify parent of position change
+      onMove?.(newPos);
+    } else if (animState === 'walking') {
+      setAnimState('idle');
+      setWalkCycle(0);
     }
     
-    // Camera follow
-    const cameraOffset = new Vector3(0, 8, 12);
+    // Camera follow with smooth damping
+    const cameraOffset = new Vector3(0, 7, 10);
     const targetCameraPos = currentPos.clone().add(cameraOffset);
     camera.position.lerp(targetCameraPos, 0.05);
-    camera.lookAt(currentPos.x, currentPos.y + 2, currentPos.z);
+    camera.lookAt(currentPos.x, currentPos.y + 1.5, currentPos.z);
     
-    // Limb animation
-    if (groupRef.current) {
-      const leftArm = groupRef.current.getObjectByName('leftArm');
-      const rightArm = groupRef.current.getObjectByName('rightArm');
-      const leftLeg = groupRef.current.getObjectByName('leftLeg');
-      const rightLeg = groupRef.current.getObjectByName('rightLeg');
-      
-      if (isMoving) {
-        const swing = Math.sin(walkCycle) * 0.5;
-        if (leftArm) leftArm.rotation.x = swing;
-        if (rightArm) rightArm.rotation.x = -swing;
-        if (leftLeg) leftLeg.rotation.x = -swing;
-        if (rightLeg) rightLeg.rotation.x = swing;
-      } else {
-        // Idle breathing
-        const breath = Math.sin(state.clock.elapsedTime * 2) * 0.05;
-        if (leftArm) leftArm.rotation.x = breath;
-        if (rightArm) rightArm.rotation.x = -breath;
-        if (leftLeg) leftLeg.rotation.x = 0;
-        if (rightLeg) rightLeg.rotation.x = 0;
-      }
+    // Lifting animation
+    if (isLifting) {
+      setLiftProgress(prev => {
+        const newProgress = prev + delta * 2;
+        if (newProgress >= 1) {
+          setTimeout(() => {
+            setIsLifting(false);
+            setLiftProgress(0);
+            setAnimState('idle');
+          }, 500);
+          return 1;
+        }
+        return newProgress;
+      });
     }
+    
+    // Posture warning if no harness during lifting
+    if (isLifting && !hasHarness) {
+      setShowPostureWarning(true);
+    } else {
+      setShowPostureWarning(false);
+    }
+    
+    // Apply animations to body parts
+    applyAnimations(state, delta);
   });
   
+  const applyAnimations = (state: any, _delta: number) => {
+    if (!groupRef.current) return;
+    
+    const leftArm = groupRef.current.getObjectByName('leftArm') as Group;
+    const rightArm = groupRef.current.getObjectByName('rightArm') as Group;
+    const leftLeg = groupRef.current.getObjectByName('leftLeg') as Group;
+    const rightLeg = groupRef.current.getObjectByName('rightLeg') as Group;
+    const spine = groupRef.current.getObjectByName('spine') as Group;
+    
+    if (animState === 'walking') {
+      // Walking - natural arm/leg swing
+      const swing = Math.sin(walkCycle) * 0.6;
+      const legSwing = Math.sin(walkCycle) * 0.5;
+      
+      if (leftArm) leftArm.rotation.x = swing;
+      if (rightArm) rightArm.rotation.x = -swing;
+      if (leftLeg) leftLeg.rotation.x = -legSwing;
+      if (rightLeg) rightLeg.rotation.x = legSwing;
+      
+      // Subtle spine rotation
+      if (spine) spine.rotation.y = Math.sin(walkCycle * 0.5) * 0.05;
+      
+    } else if (animState === 'lifting') {
+      // Lifting - arms up, bend knees
+      const liftPhase = Math.sin(liftProgress * Math.PI);
+      
+      if (leftArm) leftArm.rotation.x = -liftPhase * 1.5;
+      if (rightArm) rightArm.rotation.x = -liftPhase * 1.5;
+      if (leftLeg) leftLeg.rotation.x = liftPhase * 0.3;
+      if (rightLeg) rightLeg.rotation.x = liftPhase * 0.3;
+      
+      // Back posture warning
+      if (!hasHarness && spine) {
+        spine.rotation.x = liftPhase * 0.3; // Bad posture!
+      }
+      
+    } else if (animState === 'inspecting') {
+      // Inspecting - pointing gesture
+      if (rightArm) rightArm.rotation.x = -0.5;
+      if (rightArm) rightArm.rotation.z = -0.3;
+      
+    } else {
+      // Idle - breathing animation
+      const breath = Math.sin(state.clock.elapsedTime * 1.5) * 0.03;
+      if (leftArm) leftArm.rotation.x = breath;
+      if (rightArm) rightArm.rotation.x = -breath;
+      if (leftLeg) leftLeg.rotation.x = 0;
+      if (rightLeg) rightLeg.rotation.x = 0;
+      if (spine) spine.rotation.y = breath * 0.5;
+    }
+  };
+  
+  // Public method to trigger inspection
+  const startInspection = useCallback(() => {
+    setAnimState('inspecting');
+    setTimeout(() => setAnimState('idle'), 2000);
+  }, []);
+  
+  // Expose method via ref
+  useEffect(() => {
+    if (groupRef.current) {
+      (groupRef.current as any).startInspection = startInspection;
+    }
+  }, [startInspection]);
+
   return (
     <group ref={groupRef} position={position}>
-      {/* Worker Avatar - Low Poly */}
+      {/* Warning indicator for bad posture */}
+      {showPostureWarning && (
+        <group position={[0, 3, 0]}>
+          <Text fontSize={0.3} color="red" anchorX="center">
+            ⚠️ DPI MANCANTE!
+          </Text>
+          <Box args={[0.8, 0.05, 0.05]} position={[0, -0.3, 0]}>
+            <meshBasicMaterial color="red" />
+          </Box>
+        </group>
+      )}
       
-      {/* Body */}
-      <Box args={[0.5, 0.7, 0.3]} position={[0, 1.15, 0]} castShadow>
-        <meshStandardMaterial color="#FF6B35" />
-      </Box>
-      
-      {/* High-vis vest stripes */}
-      <Box args={[0.52, 0.1, 0.32]} position={[0, 1.3, 0]}>
-        <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.2} />
-      </Box>
-      <Box args={[0.52, 0.1, 0.32]} position={[0, 1.1, 0]}>
-        <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.2} />
-      </Box>
-      
-      {/* Head */}
-      <group position={[0, 1.7, 0]}>
-        <Sphere args={[0.25, 16, 16]} castShadow>
-          <meshStandardMaterial color="#FDBCB4" />
-        </Sphere>
+      {/* Spine group for posture animation */}
+      <group name="spine">
+        {/* Body */}
+        <Box args={[0.5, 0.7, 0.3]} position={[0, 1.15, 0]} castShadow>
+          <meshStandardMaterial color="#FF6B35" />
+        </Box>
         
-        {/* Helmet (if equipped) */}
-        {hasHelmet && (
+        {/* High-vis vest stripes */}
+        <Box args={[0.52, 0.1, 0.32]} position={[0, 1.3, 0]}>
+          <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.2} />
+        </Box>
+        <Box args={[0.52, 0.1, 0.32]} position={[0, 1.1, 0]}>
+          <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.2} />
+        </Box>
+        
+        {/* Head */}
+        <group position={[0, 1.7, 0]}>
+          <Sphere args={[0.25, 16, 16]} castShadow>
+            <meshStandardMaterial color="#FDBCB4" />
+          </Sphere>
+          
+          {/* Helmet */}
+          {hasHelmet && (
+            <>
+              <Cylinder args={[0.28, 0.28, 0.15, 16]} position={[0, 0.2, 0]} castShadow>
+                <meshStandardMaterial color="#FFD700" />
+              </Cylinder>
+              <Cylinder args={[0.3, 0.3, 0.05, 16]} position={[0, 0.15, 0.05]} castShadow>
+                <meshStandardMaterial color="#FFD700" />
+              </Cylinder>
+            </>
+          )}
+        </group>
+        
+        {/* Left Arm */}
+        <group name="leftArm" position={[0.35, 1.4, 0]}>
+          <Cylinder args={[0.08, 0.08, 0.5]} position={[0, -0.25, 0]} castShadow>
+            <meshStandardMaterial color="#FDBCB4" />
+          </Cylinder>
+          {hasGloves && (
+            <Box args={[0.15, 0.15, 0.15]} position={[0, -0.55, 0]} castShadow>
+              <meshStandardMaterial color="#333" />
+            </Box>
+          )}
+        </group>
+        
+        {/* Right Arm */}
+        <group name="rightArm" position={[-0.35, 1.4, 0]}>
+          <Cylinder args={[0.08, 0.08, 0.5]} position={[0, -0.25, 0]} castShadow>
+            <meshStandardMaterial color="#FDBCB4" />
+          </Cylinder>
+          {hasGloves && (
+            <Box args={[0.15, 0.15, 0.15]} position={[0, -0.55, 0]} castShadow>
+              <meshStandardMaterial color="#333" />
+            </Box>
+          )}
+        </group>
+        
+        {/* Harness */}
+        {hasHarness && (
           <>
-            <Cylinder args={[0.28, 0.28, 0.15, 16]} position={[0, 0.2, 0]} castShadow>
-              <meshStandardMaterial color="#FFD700" />
+            <Box args={[0.52, 0.05, 0.32]} position={[0, 1.4, 0]}>
+              <meshStandardMaterial color="#8B0000" />
+            </Box>
+            <Box args={[0.52, 0.05, 0.32]} position={[0, 1.0, 0]}>
+              <meshStandardMaterial color="#8B0000" />
+            </Box>
+            <Cylinder args={[0.03, 0.03, 0.4]} position={[0.2, 1.2, 0]}>
+              <meshStandardMaterial color="#8B0000" />
             </Cylinder>
-            <Cylinder args={[0.3, 0.3, 0.05, 16]} position={[0, 0.15, 0.05]} castShadow>
-              <meshStandardMaterial color="#FFD700" />
+            <Cylinder args={[0.03, 0.03, 0.4]} position={[-0.2, 1.2, 0]}>
+              <meshStandardMaterial color="#8B0000" />
             </Cylinder>
           </>
         )}
       </group>
-      
-      {/* Left Arm */}
-      <group name="leftArm" position={[0.35, 1.4, 0]}>
-        <Cylinder args={[0.08, 0.08, 0.5]} position={[0, -0.25, 0]} castShadow>
-          <meshStandardMaterial color="#FDBCB4" />
-        </Cylinder>
-        {/* Glove */}
-        {hasGloves && (
-          <Box args={[0.15, 0.15, 0.15]} position={[0, -0.55, 0]} castShadow>
-            <meshStandardMaterial color="#333" />
-          </Box>
-        )}
-      </group>
-      
-      {/* Right Arm */}
-      <group name="rightArm" position={[-0.35, 1.4, 0]}>
-        <Cylinder args={[0.08, 0.08, 0.5]} position={[0, -0.25, 0]} castShadow>
-          <meshStandardMaterial color="#FDBCB4" />
-        </Cylinder>
-        {/* Glove */}
-        {hasGloves && (
-          <Box args={[0.15, 0.15, 0.15]} position={[0, -0.55, 0]} castShadow>
-            <meshStandardMaterial color="#333" />
-          </Box>
-        )}
-      </group>
-      
-      {/* Harness (if equipped) */}
-      {hasHarness && (
-        <>
-          <Box args={[0.52, 0.05, 0.32]} position={[0, 1.4, 0]}>
-            <meshStandardMaterial color="#8B0000" />
-          </Box>
-          <Box args={[0.52, 0.05, 0.32]} position={[0, 1.0, 0]}>
-            <meshStandardMaterial color="#8B0000" />
-          </Box>
-          <Cylinder args={[0.03, 0.03, 0.4]} position={[0.2, 1.2, 0]}>
-            <meshStandardMaterial color="#8B0000" />
-          </Cylinder>
-          <Cylinder args={[0.03, 0.03, 0.4]} position={[-0.2, 1.2, 0]}>
-            <meshStandardMaterial color="#8B0000" />
-          </Cylinder>
-        </>
-      )}
       
       {/* Left Leg */}
       <group name="leftLeg" position={[0.15, 0.6, 0]}>
         <Cylinder args={[0.1, 0.1, 0.6]} position={[0, -0.3, 0]} castShadow>
           <meshStandardMaterial color="#2C3E50" />
         </Cylinder>
-        {/* Boot */}
         <Box args={[0.15, 0.2, 0.25]} position={[0, -0.65, 0.05]} castShadow>
           <meshStandardMaterial color="#8B4513" />
         </Box>
@@ -234,17 +319,27 @@ export default function Avatar3D({
         <Cylinder args={[0.1, 0.1, 0.6]} position={[0, -0.3, 0]} castShadow>
           <meshStandardMaterial color="#2C3E50" />
         </Cylinder>
-        {/* Boot */}
         <Box args={[0.15, 0.2, 0.25]} position={[0, -0.65, 0.05]} castShadow>
           <meshStandardMaterial color="#8B4513" />
         </Box>
       </group>
       
-      {/* Shadow circle under feet */}
+      {/* Shadow */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
         <circleGeometry args={[0.4, 32]} />
         <meshBasicMaterial color="#000" opacity={0.3} transparent />
       </mesh>
+      
+      {/* Interaction hint */}
+      <Text position={[0, 2.2, 0]} fontSize={0.15} color="#00C851" anchorX="center">
+        Premi E per sollevare
+      </Text>
     </group>
   );
+}
+
+// Hook to get avatar position
+export function useAvatarPosition() {
+  const [position, setPosition] = useState(new Vector3(0, 0, 0));
+  return { position, setPosition };
 }
