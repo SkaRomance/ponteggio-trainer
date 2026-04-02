@@ -1,0 +1,35 @@
+import { FormattedMessage } from 'react-intl';
+
+export default function ControlsHelp() {
+  return (
+    <div className="controls-help">
+      <h4>
+        <FormattedMessage id="controls.title" defaultMessage="Controlli" />
+      </h4>
+      <div className="controls-grid">
+        <div className="control-item">
+          <kbd>W</kbd>
+          <span><FormattedMessage id="controls.forward" defaultMessage="Avanti" /></span>
+        </div>
+        <div className="control-item">
+          <kbd>S</kbd>
+          <span><FormattedMessage id="controls.backward" defaultMessage="Indietro" /></span>
+        </div>
+        <div className="control-item">
+          <kbd>A</kbd>
+          <span><FormattedMessage id="controls.left" defaultMessage="Sinistra" /></span>
+        </div>
+        <div className="control-item">
+          <kbd>D</kbd>
+          <span><FormattedMessage id="controls.right" defaultMessage="Destra" /></span>
+        </div>
+      </div>
+      <p className="controls-tip">
+        <FormattedMessage 
+          id="controls.tip" 
+          defaultMessage="Avvicinati ai componenti per ispezionarli" 
+        />
+      </p>
+    </div>
+  );
+}
