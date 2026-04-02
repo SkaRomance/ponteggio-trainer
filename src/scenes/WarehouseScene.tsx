@@ -1,11 +1,9 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Mesh, Vector3 } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Box, Cylinder, Text } from '@react-three/drei';
 import Avatar3D from '../components/game/Avatar3D';
-import ComponentInspection from '../components/game/ComponentInspection';
 import type { InspectionData } from '../components/game/ComponentInspection';
-import { useGameStore } from '../stores/gameStore';
 
 // Componenti base del ponteggio
 interface ScaffoldingComponentProps {
@@ -92,74 +90,39 @@ function Impalcato({ position, onClick, isSelected, isInspected, isNearby }: Sca
   );
 }
 
-// Dati componenti con stati di danno
-const generateComponentData = (): Record<string, InspectionData> => {
-  const components: Record<string, InspectionData> = {};
-  
-  // Basette
-  [0, 1, 2].forEach(i => {
-    const isDamaged = Math.random() < 0.3;
-    components[`basetta-${i}`] = {
-      id: `basetta-${i}`,
-      type: 'basetta',
-      name: `Basetta ${i + 1}`,
-      isDamaged,
-      integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? 'corrosione' : undefined,
-      damageDescription: isDamaged 
-        ? "Presenta segni di ruggine visibili sulla superficie metallica. La vite di regolazione è corrosta."
-        : "Superficie metallica intatta, vite di regolazione funzionante."
-    };
-  });
-  
-  // Telai
-  [0, 1].forEach(i => {
-    const isDamaged = Math.random() < 0.3;
-    components[`telaio-${i}`] = {
-      id: `telaio-${i}`,
-      type: 'telaio',
-      name: `Telaio ${i + 1}`,
-      isDamaged,
-      integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? 'deformazione' : undefined,
-      damageDescription: isDamaged
-        ? "Il montante sinistro presenta una leggera curvatura. Potrebbe compromettere la stabilità."
-        : "Montanti perfettamente allineati, saldature intatte."
-    };
-  });
-  
-  // Impalcato
-  [0, 1, 2].forEach(i => {
-    const isDamaged = Math.random() < 0.3;
-    components[`impalcato-${i}`] = {
-      id: `impalcato-${i}`,
-      type: 'impalcato',
-      name: `Impalcato ${i + 1}`,
-      isDamaged,
-      integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? 'usura' : undefined,
-      damageDescription: isDamaged
-        ? "La superficie di calpestio mostra segni di usura eccessiva e assottigliamento in alcuni punti."
-        : "Superficie di calpestio in buone condizioni, spessore regolare."
-    };
-  });
-  
-  return components;
-};
+interface WarehouseSceneProps {
+  inspection: {
+    selectedItem: string | null;
+    setSelectedItem: (id: string | null) => void;
+    inspectedItems: Set<string>;
+    setInspectedItems: (items: Set<string>) => void;
+    nearbyItem: string | null;
+    setNearbyItem: (id: string | null) => void;
+    showInspection: boolean;
+    setShowInspection: (show: boolean) => void;
+    currentInspection: InspectionData | null;
+    setCurrentInspection: (data: InspectionData | null) => void;
+    componentData: Record<string, InspectionData>;
+    cameraMode: 'follow' | 'overview';
+    setCameraMode: (mode: 'follow' | 'overview') => void;
+  };
+}
 
-export default function WarehouseScene() {
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [inspectedItems, setInspectedItems] = useState<Set<string>>(new Set());
-  const [nearbyItem, setNearbyItem] = useState<string | null>(null);
-  const [showInspection, setShowInspection] = useState(false);
-  const [currentInspection, setCurrentInspection] = useState<InspectionData | null>(null);
+export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
+  const {
+    selectedItem, setSelectedItem,
+    inspectedItems,
+    nearbyItem, setNearbyItem,
+    showInspection, setShowInspection,
+    setCurrentInspection,
+    componentData,
+    cameraMode, setCameraMode,
+  } = inspection;
+  
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
-  const [componentData] = useState(() => generateComponentData());
-  const [cameraMode, setCameraMode] = useState<'follow' | 'overview'>('follow');
   const [overviewTarget, setOverviewTarget] = useState<Vector3 | null>(null);
   
   const { camera } = useThree();
-  const { addScore, reduceHealth, addError } = useGameStore();
   const groupRef = useRef<Mesh>(null);
   
   // Posizioni componenti per proximity check
@@ -205,7 +168,7 @@ export default function WarehouseScene() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [nearbyItem, showInspection]);
   
-  const handleInspect = useCallback((id: string) => {
+  const handleInspect = (id: string) => {
     const component = componentData[id];
     if (!component || inspectedItems.has(id)) return;
     
@@ -222,30 +185,7 @@ export default function WarehouseScene() {
     const overviewPos = pos.clone().add(new Vector3(3, 2, 3));
     camera.position.copy(overviewPos);
     camera.lookAt(pos);
-  }, [componentData, inspectedItems, camera]);
-  
-  const handleDecision = useCallback((_decision: 'usable' | 'damaged', correct: boolean) => {
-    if (!currentInspection) return;
-    
-    setTimeout(() => {
-      setShowInspection(false);
-      setCameraMode('follow');
-      setOverviewTarget(null);
-      
-      if (correct) {
-        addScore(50);
-        setInspectedItems(prev => new Set(prev).add(currentInspection.id));
-      } else {
-        reduceHealth(20);
-        addError({
-          code: 'WRONG_EVALUATION',
-          severity: 'medium',
-          messageKey: 'error.wrongEvaluation',
-          phase: 'warehouse',
-        });
-      }
-    }, 500);
-  }, [currentInspection, addScore, reduceHealth, addError]);
+  };
   
   // Camera follow in modalità normale
   useFrame(() => {
@@ -261,100 +201,92 @@ export default function WarehouseScene() {
   });
 
   return (
-    <>
-      <group ref={groupRef}>
-        {/* Pavimento magazzino */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-          <planeGeometry args={[30, 30]} />
-          <meshStandardMaterial color="#3a3a3a" roughness={0.8} />
-        </mesh>
+    <group ref={groupRef}>
+      {/* Pavimento magazzino */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+        <planeGeometry args={[30, 30]} />
+        <meshStandardMaterial color="#3a3a3a" roughness={0.8} />
+      </mesh>
 
-        {/* Muri magazzino */}
-        <Box args={[30, 5, 0.5]} position={[0, 2.5, -15]} receiveShadow>
-          <meshStandardMaterial color="#555" />
-        </Box>
-        <Box args={[0.5, 5, 30]} position={[-15, 2.5, 0]} receiveShadow>
-          <meshStandardMaterial color="#555" />
-        </Box>
+      {/* Muri magazzino */}
+      <Box args={[30, 5, 0.5]} position={[0, 2.5, -15]} receiveShadow>
+        <meshStandardMaterial color="#555" />
+      </Box>
+      <Box args={[0.5, 5, 30]} position={[-15, 2.5, 0]} receiveShadow>
+        <meshStandardMaterial color="#555" />
+      </Box>
 
-        {/* Titolo */}
-        <Text position={[0, 4, -8]} fontSize={0.6} color="#00C851" anchorX="center">
-          FASE 1: MAGAZZINO
-        </Text>
-        <Text position={[0, 3.2, -8]} fontSize={0.25} color="#ffffff" anchorX="center">
-          Avvicinati ai componenti e premi [E] per ispezionarli
-        </Text>
+      {/* Titolo */}
+      <Text position={[0, 4, -8]} fontSize={0.6} color="#00C851" anchorX="center">
+        FASE 1: MAGAZZINO
+      </Text>
+      <Text position={[0, 3.2, -8]} fontSize={0.25} color="#ffffff" anchorX="center">
+        Avvicinati ai componenti e premi [E] per ispezionarli
+      </Text>
 
-        {/* Avatar */}
-        <Avatar3D 
-          position={[0, 0, 8]} 
-          hasHelmet={true} 
-          hasHarness={true} 
-          hasGloves={true}
-          onMove={setAvatarPosition}
-        />
+      {/* Avatar */}
+      <Avatar3D 
+        position={[0, 0, 8]} 
+        hasHelmet={true} 
+        hasHarness={true} 
+        hasGloves={true}
+        onMove={setAvatarPosition}
+      />
 
-        {/* Area Basette */}
-        <group position={[-5, 0, -2]}>
-          <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Basette</Text>
-          {[0, 1, 2].map((i) => (
-            <Basetta
-              key={`basetta-${i}`}
-              position={new Vector3(i * 1.5, 0.05, 0)}
-              onClick={() => handleInspect(`basetta-${i}`)}
-              isSelected={selectedItem === `basetta-${i}`}
-              isInspected={inspectedItems.has(`basetta-${i}`)}
-              isNearby={nearbyItem === `basetta-${i}`}
-              type="basetta"
-            />
-          ))}
-        </group>
-
-        {/* Area Telai */}
-        <group position={[0, 0, -2]}>
-          <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Telai</Text>
-          {[0, 1].map((i) => (
-            <Telaio
-              key={`telaio-${i}`}
-              position={new Vector3(i * 2 - 0.5, 0, 0)}
-              onClick={() => handleInspect(`telaio-${i}`)}
-              isSelected={selectedItem === `telaio-${i}`}
-              isInspected={inspectedItems.has(`telaio-${i}`)}
-              isNearby={nearbyItem === `telaio-${i}`}
-              type="telaio"
-            />
-          ))}
-        </group>
-
-        {/* Area Impalcato */}
-        <group position={[5, 0, -2]}>
-          <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Impalcato</Text>
-          {[0, 1, 2].map((i) => (
-            <Impalcato
-              key={`impalcato-${i}`}
-              position={new Vector3(i * 1.5 - 0.75, 0.025, 0)}
-              onClick={() => handleInspect(`impalcato-${i}`)}
-              isSelected={selectedItem === `impalcato-${i}`}
-              isInspected={inspectedItems.has(`impalcato-${i}`)}
-              isNearby={nearbyItem === `impalcato-${i}`}
-              type="impalcato"
-            />
-          ))}
-        </group>
-
-        {/* Istruzioni */}
-        <Text position={[-6, 0.5, 4]} fontSize={0.2} color="#ffff00">
-          ← Usa WASD per muoverti, E per interagire
-        </Text>
+      {/* Area Basette */}
+      <group position={[-5, 0, -2]}>
+        <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Basette</Text>
+        {[0, 1, 2].map((i) => (
+          <Basetta
+            key={`basetta-${i}`}
+            position={new Vector3(i * 1.5, 0.05, 0)}
+            onClick={() => handleInspect(`basetta-${i}`)}
+            isSelected={selectedItem === `basetta-${i}`}
+            isInspected={inspectedItems.has(`basetta-${i}`)}
+            isNearby={nearbyItem === `basetta-${i}`}
+            type="basetta"
+          />
+        ))}
       </group>
 
-      {/* Pannello Ispezione */}
-      {showInspection && currentInspection && (
-        <ComponentInspection
-          component={currentInspection}
-          onDecision={handleDecision}
-        />
-      )}
-    </>
+      {/* Area Telai */}
+      <group position={[0, 0, -2]}>
+        <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Telai</Text>
+        {[0, 1].map((i) => (
+          <Telaio
+            key={`telaio-${i}`}
+            position={new Vector3(i * 2 - 0.5, 0, 0)}
+            onClick={() => handleInspect(`telaio-${i}`)}
+            isSelected={selectedItem === `telaio-${i}`}
+            isInspected={inspectedItems.has(`telaio-${i}`)}
+            isNearby={nearbyItem === `telaio-${i}`}
+            type="telaio"
+          />
+        ))}
+      </group>
+
+      {/* Area Impalcato */}
+      <group position={[5, 0, -2]}>
+        <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Impalcato</Text>
+        {[0, 1, 2].map((i) => (
+          <Impalcato
+            key={`impalcato-${i}`}
+            position={new Vector3(i * 1.5 - 0.75, 0.025, 0)}
+            onClick={() => handleInspect(`impalcato-${i}`)}
+            isSelected={selectedItem === `impalcato-${i}`}
+            isInspected={inspectedItems.has(`impalcato-${i}`)}
+            isNearby={nearbyItem === `impalcato-${i}`}
+            type="impalcato"
+          />
+        ))}
+      </group>
+
+      {/* Istruzioni */}
+      <Text position={[-6, 0.5, 4]} fontSize={0.2} color="#ffff00">
+        ← Usa WASD per muoverti, E per interagire
+      </Text>
+    </group>
   );
 }
+
+export type { ScaffoldingComponentProps };

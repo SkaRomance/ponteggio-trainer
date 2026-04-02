@@ -1,8 +1,10 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, PerspectiveCamera } from '@react-three/drei';
+import { useState } from 'react';
 import { IntlProvider, FormattedMessage } from 'react-intl';
 import { useGameStore } from './stores/gameStore';
+import { useInspectionStore } from './stores/inspectionStore';
 import { messages, getDirection, getFontFamily } from './i18n';
 
 // UI Components
@@ -12,6 +14,7 @@ import PhaseSelector from './components/ui/PhaseSelector';
 import LanguageSelector from './components/ui/LanguageSelector';
 import ControlsHelp from './components/game/ControlsHelp';
 import VideoTutorial, { TutorialMenu } from './components/game/VideoTutorial';
+import ComponentInspection from './components/game/ComponentInspection';
 
 // Scenes
 import WarehouseScene from './scenes/WarehouseScene';
@@ -21,6 +24,9 @@ function App() {
   const isGameOver = !isPlaying && currentHealth <= 0;
   const [showTutorialMenu, setShowTutorialMenu] = useState(false);
   const [currentTutorial, setCurrentTutorial] = useState<string | null>(null);
+  
+  // Store per ispezione componenti
+  const inspection = useInspectionStore();
 
   // Apply RTL direction and font for Arabic
   useEffect(() => {
@@ -98,7 +104,7 @@ function App() {
             <Environment preset="warehouse" />
             
             <Suspense fallback={null}>
-              <WarehouseScene />
+              <WarehouseScene inspection={inspection} />
             </Suspense>
           </Canvas>
         </div>
@@ -126,6 +132,14 @@ function App() {
             title="Tutorial"
             onClose={() => setCurrentTutorial(null)}
             onComplete={() => console.log('Tutorial completato!')}
+          />
+        )}
+
+        {/* Component Inspection Overlay - FUORI dalla Canvas! */}
+        {inspection.showInspection && inspection.currentInspection && (
+          <ComponentInspection
+            component={inspection.currentInspection}
+            onDecision={(_, correct) => inspection.handleInspectionComplete(correct)}
           />
         )}
       </div>
