@@ -86,6 +86,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'inspection.shouldReject': 'Questo componente è danneggiato e dovrebbe essere scartato.',
     'inspection.shouldAccept': 'Questo componente è integro e può essere utilizzato.',
     'inspection.continuing': 'Continuamento...',
+    'inspection.loaded': '✓ Componente caricato sul mezzo',
   },
   en: {
     'app.title': 'MARS-Safe Scaffolding',

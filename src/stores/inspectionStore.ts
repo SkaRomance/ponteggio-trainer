@@ -60,6 +60,7 @@ const generateComponentData = (): Record<string, InspectionData> => {
 export function useInspectionStore() {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [inspectedItems, setInspectedItems] = useState<Set<string>>(new Set());
+  const [loadedItems, setLoadedItems] = useState<string[]>([]);
   const [nearbyItem, setNearbyItem] = useState<string | null>(null);
   const [showInspection, setShowInspection] = useState(false);
   const [currentInspection, setCurrentInspection] = useState<InspectionData | null>(null);
@@ -68,13 +69,17 @@ export function useInspectionStore() {
   
   const { addScore, reduceHealth, addError } = useGameStore();
   
-  const handleInspectionComplete = useCallback((correct: boolean) => {
+  const handleInspectionComplete = useCallback((decision: 'usable' | 'damaged', correct: boolean) => {
     setShowInspection(false);
     setCameraMode('follow');
     
     if (correct && currentInspection) {
       addScore(50);
       setInspectedItems(prev => new Set(prev).add(currentInspection.id));
+      // Se il giocatore ha correttamente identificato come utilizzabile, aggiungi al carico
+      if (decision === 'usable' && !currentInspection.isDamaged) {
+        setLoadedItems(prev => [...prev, currentInspection.id]);
+      }
     } else {
       reduceHealth(20);
       addError({
@@ -91,6 +96,8 @@ export function useInspectionStore() {
     setSelectedItem,
     inspectedItems,
     setInspectedItems,
+    loadedItems,
+    setLoadedItems,
     nearbyItem,
     setNearbyItem,
     showInspection,

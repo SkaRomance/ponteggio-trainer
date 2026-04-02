@@ -139,7 +139,7 @@ function App() {
         {inspection.showInspection && inspection.currentInspection && (
           <ComponentInspection
             component={inspection.currentInspection}
-            onDecision={(_, correct) => inspection.handleInspectionComplete(correct)}
+            onDecision={(decision, correct) => inspection.handleInspectionComplete(decision, correct)}
           />
         )}
       </div>

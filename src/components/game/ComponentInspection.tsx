@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FormattedMessage } from 'react-intl';
+import Component3DView from './Component3DView';
 
 export interface InspectionData {
   id: string;
@@ -36,12 +37,12 @@ export default function ComponentInspection({ component, onDecision }: Component
     // Delay per mostrare il risultato prima di chiudere
     setTimeout(() => {
       onDecision(choice, isCorrect);
-    }, 2500);
+    }, 3000);
   };
 
   return (
     <div className="inspection-overlay">
-      <div className="inspection-modal">
+      <div className="inspection-modal expanded">
         {/* Header */}
         <div className="inspection-header">
           <h3>
@@ -50,143 +51,149 @@ export default function ComponentInspection({ component, onDecision }: Component
           <span className="component-name">{component.name}</span>
         </div>
 
-        {/* Component View */}
-        <div className="component-view">
-          <div className={`component-visual ${component.type} ${component.isDamaged ? 'damaged' : ''}`}>
-            {/* Icona componente */}
-            <span className="component-icon">
-              {component.type === 'basetta' && '🔩'}
-              {component.type === 'telaio' && '⬜'}
-              {component.type === 'impalcato' && '⬛'}
-              {component.type === 'diagonale' && '⚡'}
-              {component.type === 'parapetto' && '🛡️'}
-            </span>
-            
-            {/* Indicatori danno visibili */}
-            {component.isDamaged && (
-              <div className="damage-indicators">
-                {component.damageType === 'corrosione' && <span className="damage-badge rust">⚠️ Ruggine</span>}
-                {component.damageType === 'deformazione' && <span className="damage-badge bent">⚠️ Deformato</span>}
-                {component.damageType === 'crepa' && <span className="damage-badge crack">⚠️ Crepa</span>}
-                {component.damageType === 'usura' && <span className="damage-badge worn">⚠️ Usurato</span>}
-              </div>
-            )}
+        <div className="inspection-content">
+          {/* Vista 3D del componente */}
+          <div className="inspection-left">
+            <Component3DView component={component} />
           </div>
 
-          {/* Dettagli ispezione */}
-          <div className="inspection-details">
-            <div className="detail-row">
-              <span className="detail-label">
-                <FormattedMessage id="inspection.type" defaultMessage="Tipo:" />
-              </span>
-              <span className="detail-value">{component.name}</span>
-            </div>
-            
-            <div className="detail-row">
-              <span className="detail-label">
-                <FormattedMessage id="inspection.integrity" defaultMessage="Integrità:" />
-              </span>
-              <div className="integrity-bar">
-                <div 
-                  className={`integrity-fill ${component.integrity < 50 ? 'low' : component.integrity < 80 ? 'medium' : 'high'}`}
-                  style={{ width: `${component.integrity}%` }}
-                />
-                <span className="integrity-text">{component.integrity}%</span>
+          {/* Dettagli e decisione */}
+          <div className="inspection-right">
+            {/* Dettagli ispezione */}
+            <div className="inspection-details">
+              <div className="detail-row">
+                <span className="detail-label">
+                  <FormattedMessage id="inspection.type" defaultMessage="Tipo:" />
+                </span>
+                <span className="detail-value">{component.name}</span>
               </div>
+              
+              <div className="detail-row">
+                <span className="detail-label">
+                  <FormattedMessage id="inspection.integrity" defaultMessage="Integrità:" />
+                </span>
+                <div className="integrity-bar">
+                  <div 
+                    className={`integrity-fill ${component.integrity < 50 ? 'low' : component.integrity < 80 ? 'medium' : 'high'}`}
+                    style={{ width: `${component.integrity}%` }}
+                  />
+                  <span className="integrity-text">{component.integrity}%</span>
+                </div>
+              </div>
+
+              {/* Descrizione visiva del danno */}
+              {component.damageDescription && (
+                <div className={`damage-description ${component.isDamaged ? 'has-damage' : 'no-damage'}`}>
+                  <p>🔍 <strong>
+                    <FormattedMessage id="inspection.observation" defaultMessage="Osservazione:" />
+                  </strong></p>
+                  <p>{component.damageDescription}</p>
+                </div>
+              )}
+
+              {/* Indicatore danno */}
+              {component.isDamaged && (
+                <div className="damage-warning-box">
+                  <span className="warning-icon">⚠️</span>
+                  <span className="warning-text">
+                    {component.damageType === 'corrosione' && 'Ruggine visibile'}
+                    {component.damageType === 'deformazione' && 'Deformazione strutturale'}
+                    {component.damageType === 'crepa' && 'Crepa presente'}
+                    {component.damageType === 'usura' && 'Usura eccessiva'}
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Descrizione visiva del danno (indizio per il giocatore) */}
-            {component.damageDescription && (
-              <div className="damage-description">
-                <p>🔍 <strong>
-                  <FormattedMessage id="inspection.observation" defaultMessage="Osservazione:" />
-                </strong></p>
-                <p>{component.damageDescription}</p>
+            {/* Risultato della decisione */}
+            {showResult && (
+              <div className={`decision-result ${playerChoice === (component.isDamaged ? 'damaged' : 'usable') ? 'correct' : 'wrong'}`}>
+                {playerChoice === (component.isDamaged ? 'damaged' : 'usable') ? (
+                  <>
+                    <span className="result-icon">✓</span>
+                    <p>
+                      <FormattedMessage id="inspection.correct" defaultMessage="Corretto! Hai identificato correttamente il componente." />
+                    </p>
+                    {!component.isDamaged && (
+                      <p className="load-confirmation">
+                        <FormattedMessage id="inspection.loaded" defaultMessage="✓ Componente caricato sul mezzo" />
+                      </p>
+                    )}
+                    {component.isDamaged && (
+                      <p className="educational-note">
+                        <FormattedMessage 
+                          id="inspection.whyDamaged" 
+                          defaultMessage="Questo componente presenta {damage} e non è sicuro da utilizzare."
+                          values={{ damage: component.damageType }}
+                        />
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="result-icon">✗</span>
+                    <p>
+                      <FormattedMessage id="inspection.wrong" defaultMessage="Errore! La tua valutazione non è corretta." />
+                    </p>
+                    <p className="educational-note">
+                      {component.isDamaged ? (
+                        <FormattedMessage 
+                          id="inspection.shouldReject" 
+                          defaultMessage="Questo componente è danneggiato e dovrebbe essere scartato."
+                        />
+                      ) : (
+                        <FormattedMessage 
+                          id="inspection.shouldAccept" 
+                          defaultMessage="Questo componente è integro e può essere utilizzato."
+                        />
+                      )}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Pulsanti decisione */}
+            {!showResult && (
+              <div className="decision-section">
+                <p className="decision-prompt">
+                  <FormattedMessage 
+                    id="inspection.decisionPrompt" 
+                    defaultMessage="Qual è la tua valutazione? Il componente è utilizzabile?" 
+                  />
+                </p>
+                <div className="buttons-row">
+                  <button 
+                    className="btn-usable"
+                    onClick={() => handleDecision('usable')}
+                  >
+                    <span className="btn-icon">✓</span>
+                    <FormattedMessage id="inspection.usable" defaultMessage="Utilizzabile" />
+                    <small>Carica sul mezzo</small>
+                  </button>
+                  <button 
+                    className="btn-damaged"
+                    onClick={() => handleDecision('damaged')}
+                  >
+                    <span className="btn-icon">✗</span>
+                    <FormattedMessage id="inspection.damaged" defaultMessage="Danneggiato" />
+                    <small>Scarta il pezzo</small>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Indicatore di caricamento */}
+            {showResult && (
+              <div className="auto-close-indicator">
+                <FormattedMessage id="inspection.continuing" defaultMessage="Continuamento..." />
+                <div className="progress-dots">
+                  <span>.</span><span>.</span><span>.</span>
+                </div>
               </div>
             )}
           </div>
         </div>
-
-        {/* Risultato della decisione */}
-        {showResult && (
-          <div className={`decision-result ${playerChoice === (component.isDamaged ? 'damaged' : 'usable') ? 'correct' : 'wrong'}`}>
-            {playerChoice === (component.isDamaged ? 'damaged' : 'usable') ? (
-              <>
-                <span className="result-icon">✓</span>
-                <p>
-                  <FormattedMessage id="inspection.correct" defaultMessage="Corretto! Hai identificato correttamente il componente." />
-                </p>
-                {component.isDamaged && (
-                  <p className="educational-note">
-                    <FormattedMessage 
-                      id="inspection.whyDamaged" 
-                      defaultMessage="Questo componente presenta {damage} e non è sicuro da utilizzare."
-                      values={{ damage: component.damageType }}
-                    />
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <span className="result-icon">✗</span>
-                <p>
-                  <FormattedMessage id="inspection.wrong" defaultMessage="Errore! La tua valutazione non è corretta." />
-                </p>
-                <p className="educational-note">
-                  {component.isDamaged ? (
-                    <FormattedMessage 
-                      id="inspection.shouldReject" 
-                      defaultMessage="Questo componente è danneggiato e dovrebbe essere scartato."
-                    />
-                  ) : (
-                    <FormattedMessage 
-                      id="inspection.shouldAccept" 
-                      defaultMessage="Questo componente è integro e può essere utilizzato."
-                    />
-                  )}
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Pulsanti decisione */}
-        {!showResult && (
-          <div className="decision-buttons">
-            <p className="decision-prompt">
-              <FormattedMessage 
-                id="inspection.decisionPrompt" 
-                defaultMessage="Qual è la tua valutazione? Il componente è utilizzabile?" 
-              />
-            </p>
-            <div className="buttons-row">
-              <button 
-                className="btn-usable"
-                onClick={() => handleDecision('usable')}
-              >
-                <span className="btn-icon">✓</span>
-                <FormattedMessage id="inspection.usable" defaultMessage="Utilizzabile" />
-              </button>
-              <button 
-                className="btn-damaged"
-                onClick={() => handleDecision('damaged')}
-              >
-                <span className="btn-icon">✗</span>
-                <FormattedMessage id="inspection.damaged" defaultMessage="Danneggiato" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Indicatore di caricamento per chiusura automatica */}
-        {showResult && (
-          <div className="auto-close-indicator">
-            <FormattedMessage id="inspection.continuing" defaultMessage="Continuamento..." />
-            <div className="progress-dots">
-              <span>.</span><span>.</span><span>.</span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
