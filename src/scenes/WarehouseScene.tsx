@@ -5,7 +5,6 @@ import { Box, Cylinder, Text } from '@react-three/drei';
 import Avatar3D from '../components/game/Avatar3D';
 import type { InspectionData } from '../components/game/ComponentInspection';
 
-// Componenti base del ponteggio
 interface ScaffoldingComponentProps {
   position: Vector3;
   onClick: () => void;
@@ -108,6 +107,17 @@ interface WarehouseSceneProps {
   };
 }
 
+const COMPONENT_WORLD_POSITIONS: Record<string, Vector3> = {
+  'basetta-0': new Vector3(-5, 0.05, -2),
+  'basetta-1': new Vector3(-3.5, 0.05, -2),
+  'basetta-2': new Vector3(-2, 0.05, -2),
+  'telaio-0': new Vector3(-0.5, 0, -2),
+  'telaio-1': new Vector3(1.5, 0, -2),
+  'impalcato-0': new Vector3(4.25, 0.025, -2),
+  'impalcato-1': new Vector3(5.75, 0.025, -2),
+  'impalcato-2': new Vector3(7.25, 0.025, -2),
+};
+
 export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
   const {
     selectedItem, setSelectedItem,
@@ -120,33 +130,26 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
   } = inspection;
   
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
-  const [overviewTarget, setOverviewTarget] = useState<Vector3 | null>(null);
   
   const { camera } = useThree();
   const groupRef = useRef<Mesh>(null);
+  const avatarPosRef = useRef(avatarPosition);
+  const nearbyItemRef = useRef(nearbyItem);
+  const showInspectionRef = useRef(showInspection);
   
-  // Posizioni componenti per proximity check
-  const componentPositions = useRef<Record<string, Vector3>>({
-    'basetta-0': new Vector3(-5 + 0 * 1.5, 0.05, -2),
-    'basetta-1': new Vector3(-5 + 1 * 1.5, 0.05, -2),
-    'basetta-2': new Vector3(-5 + 2 * 1.5, 0.05, -2),
-    'telaio-0': new Vector3(0 + 0 * 2 - 0.5, 0, -2),
-    'telaio-1': new Vector3(0 + 1 * 2 - 0.5, 0, -2),
-    'impalcato-0': new Vector3(5 + 0 * 1.5 - 0.75, 0.025, -2),
-    'impalcato-1': new Vector3(5 + 1 * 1.5 - 0.75, 0.025, -2),
-    'impalcato-2': new Vector3(5 + 2 * 1.5 - 0.75, 0.025, -2),
-  });
+  useEffect(() => { avatarPosRef.current = avatarPosition; }, [avatarPosition]);
+  useEffect(() => { nearbyItemRef.current = nearbyItem; }, [nearbyItem]);
+  useEffect(() => { showInspectionRef.current = showInspection; }, [showInspection]);
   
-  // Proximity detection
   useFrame(() => {
     if (cameraMode === 'overview') return;
     
     let closestItem: string | null = null;
     let closestDistance = Infinity;
-    const interactionDistance = 2.5;
+    const interactionDistance = 3;
     
-    Object.entries(componentPositions.current).forEach(([id, pos]) => {
-      const distance = avatarPosition.distanceTo(pos);
+    Object.entries(COMPONENT_WORLD_POSITIONS).forEach(([id, pos]) => {
+      const distance = avatarPosRef.current.distanceTo(pos);
       if (distance < interactionDistance && distance < closestDistance) {
         closestDistance = distance;
         closestItem = id;
@@ -156,17 +159,16 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
     setNearbyItem(closestItem);
   });
   
-  // Tasto E per interagire
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'e' && nearbyItem && !showInspection) {
-        handleInspect(nearbyItem);
+      if (e.key.toLowerCase() === 'e' && nearbyItemRef.current && !showInspectionRef.current) {
+        handleInspect(nearbyItemRef.current);
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nearbyItem, showInspection]);
+  }, [cameraMode]);
   
   const handleInspect = (id: string) => {
     const component = componentData[id];
@@ -177,38 +179,28 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
     setShowInspection(true);
     setCameraMode('overview');
     
-    // Imposta target camera per overview
-    const pos = componentPositions.current[id];
-    setOverviewTarget(pos.clone());
-    
-    // Muovi camera in posizione overview
+    const pos = COMPONENT_WORLD_POSITIONS[id];
     const overviewPos = pos.clone().add(new Vector3(3, 2, 3));
     camera.position.copy(overviewPos);
     camera.lookAt(pos);
   };
   
-  // Camera follow in modalità normale
   useFrame(() => {
     if (cameraMode === 'follow') {
       const cameraOffset = new Vector3(0, 7, 10);
       const targetCameraPos = avatarPosition.clone().add(cameraOffset);
       camera.position.lerp(targetCameraPos, 0.05);
       camera.lookAt(avatarPosition.x, avatarPosition.y + 1.5, avatarPosition.z);
-    } else if (cameraMode === 'overview' && overviewTarget) {
-      // Camera fissa in modalità overview
-      camera.lookAt(overviewTarget);
     }
   });
 
   return (
     <group ref={groupRef}>
-      {/* Pavimento magazzino */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[30, 30]} />
         <meshStandardMaterial color="#3a3a3a" roughness={0.8} />
       </mesh>
 
-      {/* Muri magazzino */}
       <Box args={[30, 5, 0.5]} position={[0, 2.5, -15]} receiveShadow>
         <meshStandardMaterial color="#555" />
       </Box>
@@ -216,7 +208,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         <meshStandardMaterial color="#555" />
       </Box>
 
-      {/* Titolo */}
       <Text position={[0, 4, -8]} fontSize={0.6} color="#00C851" anchorX="center">
         FASE 1: MAGAZZINO
       </Text>
@@ -224,7 +215,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         Avvicinati ai componenti e premi [E] per ispezionarli
       </Text>
 
-      {/* Avatar */}
       <Avatar3D 
         position={[0, 0, 8]} 
         hasHelmet={true} 
@@ -233,7 +223,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         onMove={setAvatarPosition}
       />
 
-      {/* Area Basette */}
       <group position={[-5, 0, -2]}>
         <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Basette</Text>
         {[0, 1, 2].map((i) => (
@@ -249,7 +238,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         ))}
       </group>
 
-      {/* Area Telai */}
       <group position={[0, 0, -2]}>
         <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Telai</Text>
         {[0, 1].map((i) => (
@@ -265,7 +253,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         ))}
       </group>
 
-      {/* Area Impalcato */}
       <group position={[5, 0, -2]}>
         <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Impalcato</Text>
         {[0, 1, 2].map((i) => (
@@ -281,7 +268,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         ))}
       </group>
 
-      {/* Istruzioni */}
       <Text position={[-6, 0.5, 4]} fontSize={0.2} color="#ffff00">
         ← Usa WASD per muoverti, E per interagire
       </Text>

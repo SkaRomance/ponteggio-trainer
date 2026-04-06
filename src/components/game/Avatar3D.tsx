@@ -45,11 +45,6 @@ export default function Avatar3D({
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         setKeysPressed(prev => new Set(prev).add(key));
       }
-      // Lift action
-      if (key === 'e' && !isLifting) {
-        setIsLifting(true);
-        setAnimState('lifting');
-      }
     };
     
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -68,7 +63,7 @@ export default function Avatar3D({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isLifting]);
+  }, []);
   
   // Movement and animation loop
   useFrame((state, delta) => {

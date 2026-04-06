@@ -4,10 +4,10 @@ import Component3DView from './Component3DView';
 
 export interface InspectionData {
   id: string;
-  type: 'basetta' | 'telaio' | 'impalcato' | 'diagonale' | 'parapetto';
+  type: 'basetta' | 'telaio' | 'impalcato' | 'diagonale' | 'parapetto' | 'mantovana' | 'fermapiede' | 'corrente' | 'traverso' | 'andatoia' | 'impalcato_botola' | 'scaletta' | 'messa_a_terra' | 'tavola_appoggio';
   name: string;
   isDamaged: boolean;
-  damageType?: 'corrosione' | 'deformazione' | 'crepa' | 'usura';
+  damageType?: 'corrosione' | 'deformazione' | 'crepa' | 'usura' | 'cerniere_rotte' | 'filettatura_spanata' | 'saldatura_crepata' | 'marcescenza' | 'schiacciamento' | 'piegatura' | 'mancanza_fermi';
   damageDescription?: string;
   integrity: number;
   image?: string;
@@ -100,6 +100,13 @@ export default function ComponentInspection({ component, onDecision }: Component
                     {component.damageType === 'deformazione' && 'Deformazione strutturale'}
                     {component.damageType === 'crepa' && 'Crepa presente'}
                     {component.damageType === 'usura' && 'Usura eccessiva'}
+                    {component.damageType === 'cerniere_rotte' && 'Cerniere rotte'}
+                    {component.damageType === 'filettatura_spanata' && 'Filettatura spanata'}
+                    {component.damageType === 'saldatura_crepata' && 'Saldatura crepata'}
+                    {component.damageType === 'marcescenza' && 'Marcescenza o usura legno'}
+                    {component.damageType === 'schiacciamento' && 'Schiacciamento evidente'}
+                    {component.damageType === 'piegatura' && 'Piegatura anomala'}
+                    {component.damageType === 'mancanza_fermi' && 'Mancanza di fermi'}
                   </span>
                 </div>
               )}

@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, PerspectiveCamera } from '@react-three/drei';
 import { useState } from 'react';
@@ -8,6 +8,7 @@ import { useInspectionStore } from './stores/inspectionStore';
 import { messages, getDirection, getFontFamily } from './i18n';
 
 // UI Components
+import StartMenu from './components/ui/StartMenu';
 import HealthBar from './components/ui/HealthBar';
 import ScoreDisplay from './components/ui/ScoreDisplay';
 import PhaseSelector from './components/ui/PhaseSelector';
@@ -15,18 +16,42 @@ import LanguageSelector from './components/ui/LanguageSelector';
 import ControlsHelp from './components/game/ControlsHelp';
 import VideoTutorial, { TutorialMenu } from './components/game/VideoTutorial';
 import ComponentInspection from './components/game/ComponentInspection';
+import DemoEndOverlay from './components/ui/DemoEndOverlay';
 
 // Scenes
 import WarehouseScene from './scenes/WarehouseScene';
+import TransportScene from './scenes/TransportScene';
+import StorageScene from './scenes/StorageScene';
+import AssemblyScene from './scenes/AssemblyScene';
+import UseScene from './scenes/UseScene';
+import DisassemblyScene from './scenes/DisassemblyScene';
+import ReturnScene from './scenes/ReturnScene';
+import PlaceholderScene from './scenes/PlaceholderScene';
+
+const phaseConfig: Record<string, { name: string; icon: string }> = {
+  transport: { name: 'Trasporto', icon: '🚛' },
+  storage: { name: 'Stoccaggio', icon: '🏗️' },
+  assembly: { name: 'Montaggio', icon: '🔧' },
+  use: { name: 'Uso', icon: '👷' },
+  disassembly: { name: 'Smontaggio', icon: '🔨' },
+  return: { name: 'Ritorno', icon: '🏭' },
+};
 
 function App() {
-  const { locale, currentHealth, isPlaying, resetGame } = useGameStore();
-  const isGameOver = !isPlaying && currentHealth <= 0;
+  const { locale, currentHealth, isPlaying, resetGame, currentPhase } = useGameStore();
+  const isGameOver = isPlaying === false && currentHealth <= 0;
   const [showTutorialMenu, setShowTutorialMenu] = useState(false);
   const [currentTutorial, setCurrentTutorial] = useState<string | null>(null);
-  
-  // Store per ispezione componenti
   const inspection = useInspectionStore();
+  const prevPhaseRef = useRef(currentPhase);
+
+  // Reset inspection state when phase changes
+  useEffect(() => {
+    if (prevPhaseRef.current !== currentPhase) {
+      inspection.setPhaseComplete(false);
+      prevPhaseRef.current = currentPhase;
+    }
+  }, [currentPhase]);
 
   // Apply RTL direction and font for Arabic
   useEffect(() => {
@@ -34,22 +59,57 @@ function App() {
     document.body.style.fontFamily = getFontFamily(locale);
   }, [locale]);
 
+  // Menu phase
+  if (currentPhase === 'menu') {
+    return (
+      <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+        <StartMenu />
+      </IntlProvider>
+    );
+  }
+
+  // Game over
   if (isGameOver) {
     return (
-      <div className="game-over-screen">
-        <h1>
-          <FormattedMessage id="game.over.title" defaultMessage="Game Over" />
-        </h1>
-        <p>
-          <FormattedMessage 
-            id="game.over.message" 
-            defaultMessage="Hai commesso errori critici nella sicurezza." 
-          />
-        </p>
-        <button onClick={resetGame} className="restart-btn">
-          <FormattedMessage id="game.restart" defaultMessage="Riprova" />
-        </button>
-      </div>
+      <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+        <div className="game-over-screen">
+          <h1>
+            <FormattedMessage id="game.over.title" defaultMessage="Game Over" />
+          </h1>
+          <p>
+            <FormattedMessage 
+              id="game.over.message" 
+              defaultMessage="Hai commesso errori critici nella sicurezza." 
+            />
+          </p>
+          <button onClick={resetGame} className="restart-btn">
+            <FormattedMessage id="game.restart" defaultMessage="Ricomincia" />
+          </button>
+        </div>
+      </IntlProvider>
+    );
+  }
+
+  // Completed
+  if (currentPhase === 'completed') {
+    return (
+      <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+        <div className="game-over-screen">
+          <h1 style={{ color: '#00C851' }}>
+            <FormattedMessage id="game.completed.title" defaultMessage="Corso Completato!" />
+          </h1>
+          <p>
+            <FormattedMessage 
+              id="game.completed.message" 
+              defaultMessage="Hai completato tutte le fasi del corso di sicurezza." 
+            />
+          </p>
+          <button onClick={resetGame} className="restart-btn">
+            <FormattedMessage id="game.restart" defaultMessage="Ricomincia" />
+          </button>
+        </div>
+        <DemoEndOverlay />
+      </IntlProvider>
     );
   }
 
@@ -81,6 +141,24 @@ function App() {
           </button>
         </nav>
 
+        {/* Progresso ispezione magazzino */}
+        {currentPhase === 'warehouse' && (
+          <div className="warehouse-progress">
+            <div className="progress-info">
+              <span>Componenti ispezionati: {inspection.inspectedItems.size} / 8</span>
+              {inspection.phaseComplete && (
+                <span className="phase-complete-msg">✓ Fase completata! Passando a Trasporto...</span>
+              )}
+            </div>
+            <div className="progress-bar">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${(inspection.inspectedItems.size / 8) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* 3D Scene */}
         <div className="scene-container">
           <Canvas shadows camera={{ position: [0, 5, 10], fov: 50 }}>
@@ -101,10 +179,22 @@ function App() {
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
             />
-            <Environment preset="warehouse" />
+            <Environment preset="city" />
             
             <Suspense fallback={null}>
-              <WarehouseScene inspection={inspection} />
+              {currentPhase === 'warehouse' && <WarehouseScene inspection={inspection} />}
+              {currentPhase === 'transport' && <TransportScene />}
+              {currentPhase === 'storage' && <StorageScene />}
+              {currentPhase === 'assembly' && <AssemblyScene />}
+              {currentPhase === 'use' && <UseScene />}
+              {currentPhase === 'disassembly' && <DisassemblyScene />}
+              {currentPhase === 'return' && <ReturnScene />}
+              {currentPhase !== 'warehouse' && currentPhase !== 'transport' && currentPhase !== 'storage' && currentPhase !== 'assembly' && currentPhase !== 'use' && currentPhase !== 'disassembly' && currentPhase !== 'return' && phaseConfig[currentPhase] && (
+                <PlaceholderScene 
+                  phaseName={phaseConfig[currentPhase].name} 
+                  phaseIcon={phaseConfig[currentPhase].icon} 
+                />
+              )}
             </Suspense>
           </Canvas>
         </div>
@@ -135,7 +225,7 @@ function App() {
           />
         )}
 
-        {/* Component Inspection Overlay - FUORI dalla Canvas! */}
+        {/* Component Inspection Overlay */}
         {inspection.showInspection && inspection.currentInspection && (
           <ComponentInspection
             component={inspection.currentInspection}

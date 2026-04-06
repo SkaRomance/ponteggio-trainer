@@ -23,6 +23,10 @@ export default function ControlsHelp() {
           <kbd>D</kbd>
           <span><FormattedMessage id="controls.right" defaultMessage="Destra" /></span>
         </div>
+        <div className="control-item">
+          <kbd>E</kbd>
+          <span><FormattedMessage id="controls.e" defaultMessage="Interagisci" /></span>
+        </div>
       </div>
       <p className="controls-tip">
         <FormattedMessage 

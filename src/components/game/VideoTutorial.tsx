@@ -126,18 +126,18 @@ export default function VideoTutorial({ videoId, title, onClose, onComplete }: V
 // Tutorial Menu Component
 export function TutorialMenu({ onSelect, onClose }: { onSelect: (id: string) => void; onClose: () => void }) {
   const tutorials = [
-    { id: 'inspection', icon: '🔍', color: '#4CAF50' },
+    { id: 'inspection', icon: '🔍', color: 'var(--mars-yellow)' },
     { id: 'lifting', icon: '💪', color: '#FF9800' },
-    { id: 'assembly', icon: '🔧', color: '#2196F3' },
-    { id: 'dpi', icon: '🦺', color: '#9C27B0' },
+    { id: 'assembly', icon: '#2196F3', color: '#2196F3' }, // Fix redundant color reference or use industrial palette
+    { id: 'dpi', icon: '🦺', color: 'var(--mars-yellow)' },
   ];
 
   return (
     <div className="video-tutorial-overlay">
-      <div className="tutorial-menu-container">
+      <div className="tutorial-menu-container" style={{ borderRadius: 0, border: '4px solid var(--mars-yellow)' }}>
         <div className="video-header">
-          <h3>
-            <FormattedMessage id="tutorial.menu.title" defaultMessage="Video Tutorial" />
+          <h3 style={{ color: 'var(--mars-yellow)', fontWeight: 900 }}>
+            <FormattedMessage id="tutorial.menu.title" defaultMessage="VIDEO TUTORIAL" />
           </h3>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
@@ -147,21 +147,21 @@ export function TutorialMenu({ onSelect, onClose }: { onSelect: (id: string) => 
             <div 
               key={tutorial.id}
               className="tutorial-card"
-              style={{ borderColor: tutorial.color }}
+              style={{ borderColor: 'var(--mars-iron)', borderRadius: 0 }}
               onClick={() => onSelect(tutorial.id)}
             >
-              <span className="tutorial-icon" style={{ background: tutorial.color }}>
+              <span className="tutorial-icon" style={{ background: 'var(--mars-steel)', borderRadius: 0 }}>
                 {tutorial.icon}
               </span>
               <div className="tutorial-info">
-                <h4>
+                <h4 style={{ textTransform: 'uppercase', fontWeight: 700 }}>
                   <FormattedMessage id={`tutorial.${tutorial.id}.title`} defaultMessage={tutorial.id} />
                 </h4>
-                <p>
-                  <FormattedMessage id={`tutorial.${tutorial.id}.desc`} defaultMessage="Tutorial" />
+                <p style={{ fontSize: '0.7rem' }}>
+                  <FormattedMessage id={`tutorial.${tutorial.id}.desc`} defaultMessage="PROCEDURA OPERATIVA" />
                 </p>
               </div>
-              <span className="play-btn-small">▶</span>
+              <span className="play-btn-small" style={{ borderRadius: 0, background: 'var(--mars-yellow)' }}>▶</span>
             </div>
           ))}
         </div>
