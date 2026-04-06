@@ -4,7 +4,7 @@ import { OrbitControls, Environment, PerspectiveCamera } from '@react-three/drei
 import { useState } from 'react';
 import { IntlProvider, FormattedMessage } from 'react-intl';
 import { useGameStore } from './stores/gameStore';
-import { useInspectionStore } from './stores/inspectionStore';
+import { useInspectionStore, TOTAL_COMPONENTS } from './stores/inspectionStore';
 import { messages, getDirection, getFontFamily } from './i18n';
 
 // UI Components
@@ -72,19 +72,21 @@ function App() {
   if (isGameOver) {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
-        <div className="game-over-screen">
-          <h1>
-            <FormattedMessage id="game.over.title" defaultMessage="Game Over" />
-          </h1>
-          <p>
-            <FormattedMessage 
-              id="game.over.message" 
-              defaultMessage="Hai commesso errori critici nella sicurezza." 
-            />
-          </p>
-          <button onClick={resetGame} className="restart-btn">
-            <FormattedMessage id="game.restart" defaultMessage="Ricomincia" />
-          </button>
+        <div className="overlay-container">
+          <div className="overlay-content" style={{ border: '4px solid var(--danger-red)' }}>
+            <h1 style={{ color: 'var(--danger-red)', fontSize: 'clamp(2rem, 8vw, 4rem)', fontWeight: 900, marginBottom: '1.5rem' }}>
+              <FormattedMessage id="game.over.title" defaultMessage="GAME OVER" />
+            </h1>
+            <p style={{ fontSize: 'clamp(1rem, 3vw, 1.25rem)', color: '#888', marginBottom: '2.5rem' }}>
+              <FormattedMessage 
+                id="game.over.message" 
+                defaultMessage="HAI COMMESSO ERRORI CRITICI NELLA SICUREZZA." 
+              />
+            </p>
+            <button onClick={resetGame} className="start-btn" style={{ background: 'var(--danger-red)', color: 'white' }}>
+              <FormattedMessage id="game.restart" defaultMessage="RICOMINCIA" />
+            </button>
+          </div>
         </div>
       </IntlProvider>
     );
@@ -94,19 +96,21 @@ function App() {
   if (currentPhase === 'completed') {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
-        <div className="game-over-screen">
-          <h1 style={{ color: '#00C851' }}>
-            <FormattedMessage id="game.completed.title" defaultMessage="Corso Completato!" />
-          </h1>
-          <p>
-            <FormattedMessage 
-              id="game.completed.message" 
-              defaultMessage="Hai completato tutte le fasi del corso di sicurezza." 
-            />
-          </p>
-          <button onClick={resetGame} className="restart-btn">
-            <FormattedMessage id="game.restart" defaultMessage="Ricomincia" />
-          </button>
+        <div className="overlay-container">
+          <div className="overlay-content">
+            <h1 style={{ color: 'var(--mars-yellow)', fontSize: 'clamp(2rem, 8vw, 4rem)', fontWeight: 900, marginBottom: '1.5rem' }}>
+              <FormattedMessage id="game.completed.title" defaultMessage="CORSO COMPLETATO!" />
+            </h1>
+            <p style={{ fontSize: 'clamp(1rem, 3vw, 1.25rem)', color: '#888', marginBottom: '2.5rem' }}>
+              <FormattedMessage 
+                id="game.completed.message" 
+                defaultMessage="HAI COMPLETATO TUTTE LE FASI DEL CORSO DI SICUREZZA." 
+              />
+            </p>
+            <button onClick={resetGame} className="start-btn">
+              <FormattedMessage id="game.restart" defaultMessage="TORNA AL MENU" />
+            </button>
+          </div>
         </div>
         <DemoEndOverlay />
       </IntlProvider>
@@ -145,7 +149,7 @@ function App() {
         {currentPhase === 'warehouse' && (
           <div className="warehouse-progress">
             <div className="progress-info">
-              <span>Componenti ispezionati: {inspection.inspectedItems.size} / 8</span>
+              <span>Componenti ispezionati: {inspection.inspectedItems.size} / {TOTAL_COMPONENTS}</span>
               {inspection.phaseComplete && (
                 <span className="phase-complete-msg">✓ Fase completata! Passando a Trasporto...</span>
               )}
@@ -153,7 +157,7 @@ function App() {
             <div className="progress-bar">
               <div 
                 className="progress-fill" 
-                style={{ width: `${(inspection.inspectedItems.size / 8) * 100}%` }}
+                style={{ width: `${(inspection.inspectedItems.size / TOTAL_COMPONENTS) * 100}%` }}
               />
             </div>
           </div>

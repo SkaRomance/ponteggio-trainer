@@ -11,15 +11,16 @@ function StorageBlock({ position, onClick, hasItem }: {
 }) {
   return (
     <group position={position} onClick={onClick}>
-      <Box args={[1.5, 0.2, 0.5]} castShadow>
-        <meshStandardMaterial color="#8B4513" />
+      {/* Travi di legno per stoccaggio Pi.M.U.S. */}
+      <Box args={[1.8, 0.15, 0.4]} castShadow>
+        <meshStandardMaterial color="#5d4037" roughness={1} />
       </Box>
-      <Box args={[1.5, 0.2, 0.5]} position={[0, 0, 0.6]} castShadow>
-        <meshStandardMaterial color="#8B4513" />
+      <Box args={[1.8, 0.15, 0.4]} position={[0, 0, 0.8]} castShadow>
+        <meshStandardMaterial color="#5d4037" roughness={1} />
       </Box>
       {hasItem && (
-        <Text position={[0, 0.5, 0.3]} fontSize={0.2} color="#ffcc00">
-          STOCCATO
+        <Text position={[0, 0.6, 0.4]} fontSize={0.15} color="#00ff00" font="Space Grotesk">
+          MATERIALE STOCCATO
         </Text>
       )}
     </group>
@@ -45,9 +46,10 @@ export default function StorageScene() {
     if (selectedItemId) return; 
     e.stopPropagation();
     const p = e.point;
-    if (p.z > -5 && p.z < 5 && Math.abs(p.x) < 8) {
+    // Area sicura cantiere
+    if (p.z > -6 && p.z < 6 && Math.abs(p.x) < 10) {
       setBlocks(prev => [...prev, { pos: [p.x, 0.1, p.z], itemId: null }]);
-      addScore(10);
+      addScore(15);
     }
   };
 
@@ -60,7 +62,7 @@ export default function StorageScene() {
     setBlocks(newBlocks);
     setItemsInTruck(prev => prev.filter(id => id !== selectedItemId));
     setSelectedItemId(null);
-    addScore(30);
+    addScore(40);
   };
 
   const handleFinishPhase = () => {
@@ -71,7 +73,7 @@ export default function StorageScene() {
         messageKey: 'error.itemsOnTruck',
         phase: 'storage'
       });
-      alert("Devi scaricare tutti i pezzi dal mezzo!");
+      alert("ERRORE: TUTTI I COMPONENTI DEVONO ESSERE SCARICATI E STOCCATI.");
       return;
     }
     
@@ -81,29 +83,38 @@ export default function StorageScene() {
 
   return (
     <group>
-      <ambientLight intensity={0.4} />
-      <pointLight position={[10, 10, 10]} intensity={1} />
+      <ambientLight intensity={0.2} />
+      <pointLight position={[10, 10, 10]} intensity={1.5} />
 
+      {/* Terreno Cantiere (Asfalto/Terra) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={handlePlaceBlock}>
         <planeGeometry args={[100, 100]} />
-        <meshStandardMaterial color="#222" />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.8} />
       </mesh>
+      <gridHelper args={[100, 40, "#222", "#111"]} position={[0, 0.01, 0]} />
 
-      <Box args={[20, 15, 1]} position={[0, 7.5, -10]}>
-        <meshStandardMaterial color="#444" />
+      {/* Edificio in costruzione */}
+      <Box args={[30, 20, 2]} position={[0, 10, -15]}>
+        <meshStandardMaterial color="#222" metalness={0.5} roughness={0.2} />
       </Box>
 
-      <group position={[12, 0, 0]} rotation={[0, -Math.PI/2, 0]}>
-        <Box args={[8, 1, 4]}><meshStandardMaterial color="#333" /></Box>
+      {/* Camion arrivato */}
+      <group position={[15, 0, 0]} rotation={[0, -Math.PI/2, 0]}>
+        <Box args={[12, 1, 8]}><meshStandardMaterial color="#111" /></Box>
         {itemsInTruck.map((id, index) => (
-          <group key={id} position={[index * 1.2 - 3, 0.7, 0]} onClick={() => handleSelectItem(id)}>
-            <Box args={[1, 0.2, 1]}>
-              <meshStandardMaterial color={selectedItemId === id ? "#ffcc00" : "#666"} />
+          <group key={id} position={[index * 1.5 - 5, 0.8, 0]} onClick={() => handleSelectItem(id)}>
+            <Box args={[1.2, 0.2, 1.2]}>
+              <meshStandardMaterial 
+                color={selectedItemId === id ? "#ffcc00" : "#444"} 
+                emissive={selectedItemId === id ? "#ffcc00" : "#000"}
+                emissiveIntensity={0.5}
+              />
             </Box>
           </group>
         ))}
       </group>
 
+      {/* Blocchi di stoccaggio */}
       {blocks.map((block, index) => (
         <StorageBlock 
           key={index} 
@@ -113,43 +124,41 @@ export default function StorageScene() {
         />
       ))}
 
+      {/* Pezzi stoccati */}
       {blocks.map((block, index) => block.itemId && (
-        <Box key={`stored-${index}`} args={[1, 0.2, 1]} position={[block.pos[0], block.pos[1] + 0.2, block.pos[2]]}>
-          <meshStandardMaterial color="#ffcc00" />
+        <Box key={`stored-${index}`} args={[1.2, 0.2, 1.2]} position={[block.pos[0], block.pos[1] + 0.3, block.pos[2] + 0.4]}>
+          <meshStandardMaterial color="#ffcc00" metalness={0.8} />
         </Box>
       ))}
 
       <Avatar3D position={avatarPosition.toArray()} onMove={setAvatarPosition} />
 
-      <Center top position={[0, 8, -9]}>
-        <Text fontSize={0.5} color="var(--mars-yellow)" font="Space Grotesk">
-          STOCCAGGIO IN CANTIERE
-        </Text>
-        <Text position={[0, -0.7, 0]} fontSize={0.2} color="white">
-          1. CLICCA A TERRA PER PIAZZARE I CEPPI DI LEGNO
-        </Text>
-        <Text position={[0, -1.1, 0]} fontSize={0.2} color="white">
-          2. SELEZIONA UN PEZZO DAL CAMION E CLICCA SUL CEPPO PER STOCCARLO
+      {/* HUD Spaziale */}
+      <Center top position={[0, 12, -13]}>
+        <Text fontSize={0.7} color="#ffcc00" font="Space Grotesk">STOCCAGGIO CANTIERE</Text>
+        <Text position={[0, -1, 0]} fontSize={0.25} color="white" font="Space Grotesk" maxWidth={10}>
+          1. CLICCA A TERRA PER POSIZIONARE I CEPPI (ISOLAMENTO UMIDITÀ)
+          {"\n"}2. SCARICA TUTTI I PEZZI SUI CEPPI
         </Text>
       </Center>
 
-      <group position={[-6, 1, 0]} onClick={handleFinishPhase}>
-        <Box args={[2, 1, 0.5]}>
-          <meshStandardMaterial color={itemsInTruck.length === 0 ? "#ffcc00" : "#444"} />
-        </Box>
-        <Text position={[0, 0, 0.3]} fontSize={0.2} color="black" fontWeight="bold">
-          FINE SCARICO
+      {/* Danger Zone */}
+      <group position={[0, 0, -8]}>
+        <mesh rotation={[-Math.PI/2, 0, 0]}>
+          <ringGeometry args={[6.8, 7, 64]} />
+          <meshBasicMaterial color="#ff0000" transparent opacity={0.6} />
+        </mesh>
+        <Text position={[0, 0.1, 0]} rotation={[-Math.PI/2, 0, 0]} fontSize={0.3} color="#ff0000" font="Space Grotesk">
+          ZONA PERICOLO - NON STOCCARE
         </Text>
       </group>
 
-      <group position={[0, 0, -5]}>
-        <mesh rotation={[-Math.PI/2, 0, 0]}>
-          <ringGeometry args={[4.8, 5, 64]} />
-          <meshBasicMaterial color="red" transparent opacity={0.5} />
-        </mesh>
-        <Text position={[0, 0.1, 0]} rotation={[-Math.PI/2, 0, 0]} fontSize={0.3} color="red">
-          ZONA DI CADUTA MATERIALI - NON STOCCARE QUI
-        </Text>
+      {/* Conclusione */}
+      <group position={[-10, 1, 0]} onClick={handleFinishPhase}>
+        <Box args={[3, 1.2, 0.2]} castShadow>
+          <meshStandardMaterial color={itemsInTruck.length === 0 ? "#ffcc00" : "#222"} />
+        </Box>
+        <Text position={[0, 0, 0.15]} fontSize={0.2} color="black" fontWeight={900}>FINE SCARICO</Text>
       </group>
     </group>
   );

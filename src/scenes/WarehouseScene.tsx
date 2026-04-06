@@ -1,7 +1,7 @@
-import { useRef, useState, useEffect } from 'react';
-import { Mesh, Vector3 } from 'three';
+import { useRef, useState, useEffect, useMemo } from 'react';
+import { Vector3 } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Box, Cylinder, Text } from '@react-three/drei';
+import { Box, Cylinder, Text, Float, Center } from '@react-three/drei';
 import Avatar3D from '../components/game/Avatar3D';
 import type { InspectionData } from '../components/game/ComponentInspection';
 
@@ -11,80 +11,70 @@ interface ScaffoldingComponentProps {
   isSelected: boolean;
   isInspected: boolean;
   isNearby: boolean;
-  type: 'basetta' | 'telaio' | 'impalcato';
+  type: string;
 }
 
-function Basetta({ position, onClick, isSelected, isInspected, isNearby }: ScaffoldingComponentProps) {
-  const color = isInspected ? '#00ff00' : (isSelected ? '#ffff00' : isNearby ? '#00ffff' : '#666666');
+// Visualizzazione migliorata per i componenti (Industrial Style)
+function WarehouseComponent({ position, onClick, isSelected, isInspected, isNearby, type }: ScaffoldingComponentProps) {
+  const baseColor = useMemo(() => {
+    switch (type) {
+      case 'basetta': return '#555';
+      case 'telaio': return '#2d5a9e';
+      case 'impalcato': return '#777';
+      case 'corrente':
+      case 'traverso':
+      case 'diagonale': return '#999';
+      case 'fermapiede':
+      case 'tavola_appoggio': return '#8B4513';
+      case 'mantovana': return '#ccaa00';
+      case 'messa_a_terra':
+      case 'palina_terra': return '#cd7f32';
+      default: return '#666';
+    }
+  }, [type]);
+
+  const color = isInspected ? '#00ff00' : (isSelected ? '#ffcc00' : isNearby ? '#00ffff' : baseColor);
   
   return (
     <group position={position} onClick={onClick}>
-      <Box args={[0.8, 0.1, 0.8]} castShadow receiveShadow>
-        <meshStandardMaterial color={color} roughness={0.8} />
-      </Box>
-      <Cylinder args={[0.1, 0.1, 0.3]} position={[0, 0.2, 0]}>
-        <meshStandardMaterial color="#444444" />
-      </Cylinder>
-      {isInspected && (
-        <Text position={[0, 1, 0]} fontSize={0.3} color="#00ff00">
-          ✓
-        </Text>
-      )}
-      {isNearby && !isInspected && (
-        <Text position={[0, 0.8, 0]} fontSize={0.2} color="#00ffff">
-          [E]
-        </Text>
-      )}
-    </group>
-  );
-}
+      <Float speed={isSelected ? 5 : 0} rotationIntensity={0.2} floatIntensity={0.2}>
+        {/* Rappresentazione semplificata ma tecnica */}
+        <mesh castShadow receiveShadow>
+          {type === 'basetta' && <Box args={[0.6, 0.1, 0.6]} />}
+          {type === 'telaio' && <Box args={[1, 2, 0.1]} />}
+          {type === 'impalcato' && <Box args={[1.5, 0.05, 0.5]} />}
+          {(type === 'corrente' || type === 'traverso' || type === 'diagonale') && <Cylinder args={[0.05, 0.05, 2]} rotation={[0, 0, Math.PI/2]} />}
+          {(type === 'fermapiede' || type === 'tavola_appoggio') && <Box args={[1.5, 0.2, 0.05]} />}
+          {type === 'mantovana' && <Box args={[1.2, 0.8, 0.1]} rotation={[Math.PI/4, 0, 0]} />}
+          {type === 'scaletta' && <Box args={[0.4, 2, 0.1]} />}
+          {type === 'cancelletto' && <Box args={[0.8, 1, 0.05]} />}
+          {type === 'palina_terra' && <Cylinder args={[0.02, 0.02, 1.5]} />}
+          {type === 'messa_a_terra' && <Box args={[0.1, 0.1, 0.1]} />}
+          {/* Default fallback */}
+          {!['basetta', 'telaio', 'impalcato', 'corrente', 'traverso', 'diagonale', 'fermapiede', 'tavola_appoggio', 'mantovana', 'scaletta', 'cancelletto', 'palina_terra', 'messa_a_terra'].includes(type) && <Box args={[0.5, 0.5, 0.5]} />}
+          
+          <meshStandardMaterial 
+            color={color} 
+            metalness={0.7} 
+            roughness={0.3} 
+            emissive={isSelected ? '#ffcc00' : '#000'}
+            emissiveIntensity={isSelected ? 0.5 : 0}
+          />
+        </mesh>
 
-function Telaio({ position, onClick, isSelected, isInspected, isNearby }: ScaffoldingComponentProps) {
-  const color = isInspected ? '#00ff00' : (isSelected ? '#ffff00' : isNearby ? '#00ffff' : '#4a90e2');
-  
-  return (
-    <group position={position} onClick={onClick}>
-      <Box args={[0.1, 2, 0.1]} position={[-0.45, 1, 0]} castShadow>
-        <meshStandardMaterial color={color} />
-      </Box>
-      <Box args={[0.1, 2, 0.1]} position={[0.45, 1, 0]} castShadow>
-        <meshStandardMaterial color={color} />
-      </Box>
-      <Box args={[1, 0.1, 0.1]} position={[0, 1, 0]} castShadow>
-        <meshStandardMaterial color={color} />
-      </Box>
-      {isInspected && (
-        <Text position={[0, 2.3, 0]} fontSize={0.3} color="#00ff00">
-          ✓
-        </Text>
-      )}
-      {isNearby && !isInspected && (
-        <Text position={[0, 2.1, 0]} fontSize={0.2} color="#00ffff">
-          [E]
-        </Text>
-      )}
-    </group>
-  );
-}
-
-function Impalcato({ position, onClick, isSelected, isInspected, isNearby }: ScaffoldingComponentProps) {
-  const color = isInspected ? '#00ff00' : (isSelected ? '#ffff00' : isNearby ? '#00ffff' : '#8B4513');
-  
-  return (
-    <group position={position} onClick={onClick}>
-      <Box args={[1, 0.05, 0.6]} castShadow>
-        <meshStandardMaterial color={color} roughness={0.9} />
-      </Box>
-      {isInspected && (
-        <Text position={[0, 0.5, 0]} fontSize={0.3} color="#00ff00">
-          ✓
-        </Text>
-      )}
-      {isNearby && !isInspected && (
-        <Text position={[0, 0.3, 0]} fontSize={0.2} color="#00ffff">
-          [E]
-        </Text>
-      )}
+        {isInspected && (
+          <Text position={[0, 1.2, 0]} fontSize={0.2} color="#00ff00" font="Space Grotesk">✓ OK</Text>
+        )}
+        
+        {isNearby && !isInspected && (
+          <group position={[0, 1.5, 0]}>
+            <Box args={[0.4, 0.2, 0.01]}>
+              <meshBasicMaterial color="black" />
+            </Box>
+            <Text position={[0, 0, 0.02]} fontSize={0.15} color="#00ffff" font="Space Grotesk">[E] ISPEZIONA</Text>
+          </group>
+        )}
+      </Float>
     </group>
   );
 }
@@ -107,32 +97,20 @@ interface WarehouseSceneProps {
   };
 }
 
-const COMPONENT_WORLD_POSITIONS: Record<string, Vector3> = {
-  'basetta-0': new Vector3(-5, 0.05, -2),
-  'basetta-1': new Vector3(-3.5, 0.05, -2),
-  'basetta-2': new Vector3(-2, 0.05, -2),
-  'telaio-0': new Vector3(-0.5, 0, -2),
-  'telaio-1': new Vector3(1.5, 0, -2),
-  'impalcato-0': new Vector3(4.25, 0.025, -2),
-  'impalcato-1': new Vector3(5.75, 0.025, -2),
-  'impalcato-2': new Vector3(7.25, 0.025, -2),
-};
-
 export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
   const {
-    selectedItem, setSelectedItem,
+    selectedItem,
     inspectedItems,
     nearbyItem, setNearbyItem,
     showInspection, setShowInspection,
     setCurrentInspection,
+    setSelectedItem,
     componentData,
     cameraMode, setCameraMode,
   } = inspection;
   
-  const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
-  
+  const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 12));
   const { camera } = useThree();
-  const groupRef = useRef<Mesh>(null);
   const avatarPosRef = useRef(avatarPosition);
   const nearbyItemRef = useRef(nearbyItem);
   const showInspectionRef = useRef(showInspection);
@@ -140,15 +118,38 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
   useEffect(() => { avatarPosRef.current = avatarPosition; }, [avatarPosition]);
   useEffect(() => { nearbyItemRef.current = nearbyItem; }, [nearbyItem]);
   useEffect(() => { showInspectionRef.current = showInspection; }, [showInspection]);
+
+  // Generazione dinamica delle posizioni nel magazzino
+  const componentWorldPositions = useMemo(() => {
+    const positions: Record<string, Vector3> = {};
+    const ids = Object.keys(componentData);
+    
+    // Organizziamo in settori (file)
+    const itemsPerRow = 6;
+    const rowSpacing = 4;
+    const colSpacing = 3;
+
+    ids.forEach((id, i) => {
+      const row = Math.floor(i / itemsPerRow);
+      const col = i % itemsPerRow;
+      positions[id] = new Vector3(
+        col * colSpacing - (itemsPerRow * colSpacing) / 2 + 1.5,
+        0.5,
+        -row * rowSpacing - 5
+      );
+    });
+    
+    return positions;
+  }, [componentData]);
   
   useFrame(() => {
     if (cameraMode === 'overview') return;
     
     let closestItem: string | null = null;
     let closestDistance = Infinity;
-    const interactionDistance = 3;
+    const interactionDistance = 3.5;
     
-    Object.entries(COMPONENT_WORLD_POSITIONS).forEach(([id, pos]) => {
+    Object.entries(componentWorldPositions).forEach(([id, pos]) => {
       const distance = avatarPosRef.current.distanceTo(pos);
       if (distance < interactionDistance && distance < closestDistance) {
         closestDistance = distance;
@@ -156,7 +157,9 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
       }
     });
     
-    setNearbyItem(closestItem);
+    if (closestItem !== nearbyItemRef.current) {
+      setNearbyItem(closestItem);
+    }
   });
   
   useEffect(() => {
@@ -165,10 +168,9 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         handleInspect(nearbyItemRef.current);
       }
     };
-    
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cameraMode]);
+  }, []);
   
   const handleInspect = (id: string) => {
     const component = componentData[id];
@@ -179,100 +181,75 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
     setShowInspection(true);
     setCameraMode('overview');
     
-    const pos = COMPONENT_WORLD_POSITIONS[id];
-    const overviewPos = pos.clone().add(new Vector3(3, 2, 3));
+    const pos = componentWorldPositions[id];
+    const overviewPos = pos.clone().add(new Vector3(2, 2, 2));
     camera.position.copy(overviewPos);
     camera.lookAt(pos);
   };
   
   useFrame(() => {
     if (cameraMode === 'follow') {
-      const cameraOffset = new Vector3(0, 7, 10);
+      const cameraOffset = new Vector3(0, 8, 10);
       const targetCameraPos = avatarPosition.clone().add(cameraOffset);
-      camera.position.lerp(targetCameraPos, 0.05);
-      camera.lookAt(avatarPosition.x, avatarPosition.y + 1.5, avatarPosition.z);
+      camera.position.lerp(targetCameraPos, 0.1);
+      camera.lookAt(avatarPosition.x, avatarPosition.y + 1.2, avatarPosition.z);
     }
   });
 
   return (
-    <group ref={groupRef}>
+    <group>
+      {/* Pavimento Industriale */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[30, 30]} />
-        <meshStandardMaterial color="#3a3a3a" roughness={0.8} />
+        <planeGeometry args={[100, 100]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.5} metalness={0.2} />
       </mesh>
 
-      <Box args={[30, 5, 0.5]} position={[0, 2.5, -15]} receiveShadow>
-        <meshStandardMaterial color="#555" />
+      {/* Griglia a terra */}
+      <gridHelper args={[100, 50, "#333", "#222"]} position={[0, 0.01, 0]} />
+
+      {/* Mura Magazzino */}
+      <Box args={[100, 10, 1]} position={[0, 5, -30]} receiveShadow>
+        <meshStandardMaterial color="#222" />
       </Box>
-      <Box args={[0.5, 5, 30]} position={[-15, 2.5, 0]} receiveShadow>
-        <meshStandardMaterial color="#555" />
+      <Box args={[1, 10, 100]} position={[-20, 5, 0]} receiveShadow>
+        <meshStandardMaterial color="#222" />
+      </Box>
+      <Box args={[1, 10, 100]} position={[20, 5, 0]} receiveShadow>
+        <meshStandardMaterial color="#222" />
       </Box>
 
-      <Text position={[0, 4, -8]} fontSize={0.6} color="#00C851" anchorX="center">
-        FASE 1: MAGAZZINO
-      </Text>
-      <Text position={[0, 3.2, -8]} fontSize={0.25} color="#ffffff" anchorX="center">
-        Avvicinati ai componenti e premi [E] per ispezionarli
-      </Text>
+      {/* Renderizzazione procedurale di TUTTI i componenti dello store */}
+      {Object.keys(componentData).map((id) => {
+        const type = id.split('-')[0];
+        return (
+          <WarehouseComponent
+            key={id}
+            position={componentWorldPositions[id]}
+            onClick={() => handleInspect(id)}
+            isSelected={selectedItem === id}
+            isInspected={inspectedItems.has(id)}
+            isNearby={nearbyItem === id}
+            type={type}
+          />
+        );
+      })}
 
       <Avatar3D 
-        position={[0, 0, 8]} 
+        position={[0, 0, 12]} 
         hasHelmet={true} 
         hasHarness={true} 
-        hasGloves={true}
         onMove={setAvatarPosition}
       />
 
-      <group position={[-5, 0, -2]}>
-        <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Basette</Text>
-        {[0, 1, 2].map((i) => (
-          <Basetta
-            key={`basetta-${i}`}
-            position={new Vector3(i * 1.5, 0.05, 0)}
-            onClick={() => handleInspect(`basetta-${i}`)}
-            isSelected={selectedItem === `basetta-${i}`}
-            isInspected={inspectedItems.has(`basetta-${i}`)}
-            isNearby={nearbyItem === `basetta-${i}`}
-            type="basetta"
-          />
-        ))}
-      </group>
-
-      <group position={[0, 0, -2]}>
-        <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Telai</Text>
-        {[0, 1].map((i) => (
-          <Telaio
-            key={`telaio-${i}`}
-            position={new Vector3(i * 2 - 0.5, 0, 0)}
-            onClick={() => handleInspect(`telaio-${i}`)}
-            isSelected={selectedItem === `telaio-${i}`}
-            isInspected={inspectedItems.has(`telaio-${i}`)}
-            isNearby={nearbyItem === `telaio-${i}`}
-            type="telaio"
-          />
-        ))}
-      </group>
-
-      <group position={[5, 0, -2]}>
-        <Text position={[0, 2.5, 0]} fontSize={0.25} color="#aaaaaa">Impalcato</Text>
-        {[0, 1, 2].map((i) => (
-          <Impalcato
-            key={`impalcato-${i}`}
-            position={new Vector3(i * 1.5 - 0.75, 0.025, 0)}
-            onClick={() => handleInspect(`impalcato-${i}`)}
-            isSelected={selectedItem === `impalcato-${i}`}
-            isInspected={inspectedItems.has(`impalcato-${i}`)}
-            isNearby={nearbyItem === `impalcato-${i}`}
-            type="impalcato"
-          />
-        ))}
-      </group>
-
-      <Text position={[-6, 0.5, 4]} fontSize={0.2} color="#ffff00">
-        ← Usa WASD per muoverti, E per interagire
-      </Text>
+      {/* UI Spaziale */}
+      <Center top position={[0, 6, -15]}>
+        <Text fontSize={0.8} color="#FFCC00" font="Space Grotesk" anchorX="center">
+          LOGISTICA E ISPEZIONE
+        </Text>
+        <Text position={[0, -0.8, 0]} fontSize={0.3} color="#ffffff" font="Space Grotesk">
+          AREA VERIFICA COMPONENTI D.LGS 81/08
+        </Text>
+      </Center>
     </group>
   );
 }
-
-export type { ScaffoldingComponentProps };

@@ -4,10 +4,10 @@ import Component3DView from './Component3DView';
 
 export interface InspectionData {
   id: string;
-  type: 'basetta' | 'telaio' | 'impalcato' | 'diagonale' | 'parapetto' | 'mantovana' | 'fermapiede' | 'corrente' | 'traverso' | 'andatoia' | 'impalcato_botola' | 'scaletta' | 'messa_a_terra' | 'tavola_appoggio';
+  type: 'basetta' | 'telaio' | 'impalcato' | 'diagonale' | 'parapetto' | 'mantovana' | 'fermapiede' | 'corrente' | 'traverso' | 'andatoia' | 'impalcato_botola' | 'scaletta' | 'messa_a_terra' | 'tavola_appoggio' | 'cancelletto' | 'palina_terra';
   name: string;
   isDamaged: boolean;
-  damageType?: 'corrosione' | 'deformazione' | 'crepa' | 'usura' | 'cerniere_rotte' | 'filettatura_spanata' | 'saldatura_crepata' | 'marcescenza' | 'schiacciamento' | 'piegatura' | 'mancanza_fermi';
+  damageType?: 'corrosione' | 'deformazione' | 'crepa' | 'usura' | 'cerniere_rotte' | 'filettatura_spanata' | 'saldatura_crepata' | 'marcescenza' | 'schiacciamento' | 'piegatura' | 'mancanza_fermi' | 'mancanza_sicura' | 'ossidazione_contatti';
   damageDescription?: string;
   integrity: number;
   image?: string;

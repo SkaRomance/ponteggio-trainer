@@ -4,36 +4,35 @@ import { Box, Text, Html } from '@react-three/drei';
 import { useGameStore } from '../stores/gameStore';
 import Avatar3D from '../components/game/Avatar3D';
 
-// Anomalie da identificare (Logica Sally UX)
 const ANOMALIES = [
-  { id: 'missing_toe_board', label: 'TAVOLA FERMAPREDE MANCANTE', pos: [-2, 2.5, -2], icon: '🚫' },
-  { id: 'loose_clamp', label: 'MORSETTO NON SERRATO', pos: [2, 4.5, -2], icon: '🔧' },
-  { id: 'overload', label: 'SOVRACCARICO MATERIALE', pos: [0, 4.2, -2], icon: '⚖️' },
+  { id: 'missing_toe_board', label: 'TAVOLA FERMAPREDE MANCANTE', pos: [-4.5, 2.5, -2] },
+  { id: 'loose_clamp', label: 'MORSETTO STRUTTURALE ALLENTATO', pos: [4.5, 4.5, -2] },
+  { id: 'overload', label: 'SOVRACCARICO OLTRE 300KG/M2', pos: [0, 4.5, -2] },
+  { id: 'missing_rail', label: 'PARAPETTO INTERMEDIO MANCANTE', pos: [1.5, 6.5, -2] },
 ];
 
 export default function UseScene() {
   const { addScore, addError, nextPhase, unlockPhase, isHooked } = useGameStore();
   const [identified, setIdentified] = useState<string[]>([]);
   const [cartelloPosto, setCartelloPosto] = useState(false);
-  const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 5));
+  const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
 
   const handleIdentify = (id: string) => {
     if (identified.includes(id)) return;
     
-    // Controllo sicurezza durante ispezione
-    if (avatarPosition.y > 1.5 && !isHooked) {
+    if (avatarPosition.y > 1.8 && !isHooked) {
       addError({
         code: 'INSPECTION_UNSAFE',
         severity: 'high',
         messageKey: 'error.unsafeInspection',
         phase: 'use'
       });
-      alert("ATTENZIONE: Non puoi ispezionare punti critici senza essere ancorato!");
+      alert("ATTENZIONE: ISPEZIONE IN QUOTA SENZA ANCORAGGIO. INFRAZIONE RILEVATA.");
       return;
     }
 
     setIdentified([...identified, id]);
-    addScore(100);
+    addScore(150);
   };
 
   const handleFinish = () => {
@@ -44,16 +43,16 @@ export default function UseScene() {
         messageKey: 'error.missingSignage',
         phase: 'use'
       });
-      alert("ERRORE: Non hai apposto il cartello di AGIBILITÀ del ponteggio!");
+      alert("ERRORE: MANCA IL CARTELLO DI AGIBILITÀ (SCHEMA DI MONTAGGIO/LIBRETTO).");
       return;
     }
 
     if (identified.length < ANOMALIES.length) {
-      alert("Ci sono ancora anomalie non identificate sul ponteggio!");
+      alert("VERIFICA INCOMPLETA: CI SONO ANCORA CRITICITÀ NON RILEVATE.");
       return;
     }
 
-    alert("ISPEZIONE COMPLETATA. PONTEGGIO PRONTO ALL'USO.");
+    alert("ISPEZIONE DI CONFORMITÀ COMPLETATA.");
     unlockPhase('disassembly');
     nextPhase();
   };
@@ -61,66 +60,69 @@ export default function UseScene() {
   return (
     <group>
       <ambientLight intensity={0.4} />
-      <pointLight position={[10, 10, 10]} intensity={1} />
+      <pointLight position={[10, 10, 10]} intensity={1.5} />
 
-      {/* Il Ponteggio Montato (Rappresentazione statica per questa fase) */}
-      <Box args={[10, 8, 2]} position={[0, 4, -2]}>
-        <meshStandardMaterial color="#333" wireframe />
+      <gridHelper args={[100, 40, "#222", "#111"]} position={[0, 0.01, 0]} />
+
+      {/* Struttura Ponteggio Finita */}
+      <Box args={[12, 10, 2]} position={[0, 5, -2]}>
+        <meshStandardMaterial color="#111" wireframe />
       </Box>
 
-      {/* Anomalie Clickabili */}
+      {/* Anomalie */}
       {ANOMALIES.map((anomaly) => (
-        <group key={anomaly.id} position={[anomaly.pos[0], anomaly.pos[1], anomaly.pos[2]]} onClick={() => handleIdentify(anomaly.id)}>
+        <group key={anomaly.id} position={anomaly.pos as [number, number, number]} onClick={() => handleIdentify(anomaly.id)}>
           <mesh>
-            <sphereGeometry args={[0.3, 16, 16]} />
+            <sphereGeometry args={[0.4, 16, 16]} />
             <meshStandardMaterial 
-              color={identified.includes(anomaly.id) ? "green" : "red"} 
-              emissive={identified.includes(anomaly.id) ? "green" : "red"}
-              emissiveIntensity={0.5}
+              color={identified.includes(anomaly.id) ? "#00ff00" : "#ff0000"} 
+              emissive={identified.includes(anomaly.id) ? "#00ff00" : "#ff0000"}
+              emissiveIntensity={0.8}
             />
           </mesh>
           {!identified.includes(anomaly.id) && (
-            <Text position={[0, 0.5, 0]} fontSize={0.2} color="red">RIPRISTINA</Text>
+            <Text position={[0, 0.8, 0]} fontSize={0.2} color="#ff0000" font="Space Grotesk">ANOMALIA</Text>
           )}
         </group>
       ))}
 
-      {/* Punto affissione cartello */}
-      <group position={[-4, 1.5, -1]} onClick={() => setCartelloPosto(true)}>
-        <Box args={[0.6, 0.8, 0.1]}>
-          <meshStandardMaterial color={cartelloPosto ? "white" : "#444"} />
+      {/* Cartello Agibilità */}
+      <group position={[-6, 1.5, -1]} onClick={() => setCartelloPosto(true)}>
+        <Box args={[0.8, 1, 0.1]}>
+          <meshStandardMaterial color={cartelloPosto ? "white" : "#222"} />
         </Box>
-        {cartelloPosto ? (
-          <Text position={[0, 0, 0.1]} fontSize={0.1} color="green" fontWeight="bold">PONTEGGIO<br/>AGIBILE</Text>
-        ) : (
-          <Text position={[0, 0, 0.1]} fontSize={0.1} color="white">METTI<br/>CARTELLO</Text>
-        )}
+        <Text position={[0, 0, 0.11]} fontSize={0.12} color={cartelloPosto ? "black" : "white"} font="Space Grotesk" fontWeight={900} textAlign="center">
+          {cartelloPosto ? "PONTEGGIO\nAGIBILE" : "AFFIGGI\nCARTELLO"}
+        </Text>
       </group>
 
       <Avatar3D position={avatarPosition.toArray()} onMove={setAvatarPosition} />
 
-      <Html position={[-8, 8, 0]}>
+      <Html position={[-12, 10, 0]}>
         <div style={{ 
-          background: 'rgba(0,0,0,0.8)', 
+          background: 'rgba(0,0,0,0.95)', 
           color: '#ffcc00', 
-          padding: '1.5rem', 
-          border: '2px solid #ffcc00',
+          padding: '2rem', 
+          border: '4px solid #ffcc00',
           fontFamily: 'Space Grotesk',
-          width: '300px'
+          width: '400px'
         }}>
-          <h4 style={{ margin: '0 0 1rem 0', fontWeight: 900 }}>FASE 5: USO E ISPEZIONE</h4>
-          <p style={{ fontSize: '0.8rem' }}>IDENTIFICA TUTTE LE ANOMALIE E AFFIGGI IL CARTELLO DI AGIBILITÀ.</p>
-          <div style={{ marginTop: '1rem' }}>
-            ANOMALIE: {identified.length} / {ANOMALIES.length}
+          <h2 style={{ margin: '0 0 1rem 0', fontWeight: 900 }}>VERIFICA D'USO</h2>
+          <p style={{ fontSize: '0.9rem', color: 'white', marginBottom: '1.5rem' }}>
+            ISPEZIONA LA STRUTTURA FINITA. RILEVA LE INFRAZIONI E AUTORIZZA L'ACCESSO.
+          </p>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>
+            ANOMALIE RILEVATE: {identified.length} / {ANOMALIES.length}
           </div>
           <button 
             onClick={handleFinish}
             style={{ 
-              marginTop: '1rem', width: '100%', background: '#ffcc00', 
-              color: 'black', border: 'none', padding: '0.5rem', fontWeight: 800, cursor: 'pointer'
+              marginTop: '2rem', width: '100%', background: '#ffcc00', 
+              color: 'black', border: 'none', padding: '1rem', fontWeight: 900, cursor: 'pointer',
+              fontSize: '1.1rem'
             }}
           >
-            CONFERMA ISPEZIONE
+            VALIDA STRUTTURA
           </button>
         </div>
       </Html>

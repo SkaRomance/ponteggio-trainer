@@ -2,83 +2,108 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { InspectionData } from '../components/game/ComponentInspection';
 import { useGameStore } from './gameStore';
 
-const ALL_COMPONENT_IDS = [
-  'basetta-0', 'basetta-1', 'basetta-2',
-  'telaio-0', 'telaio-1',
-  'impalcato-0', 'impalcato-1', 'impalcato-2',
-  'mantovana-0', 'fermapiede-0', 'corrente-0', 'traverso-0',
-  'andatoia-0', 'impalcato_botola-0', 'scaletta-0', 'messa_a_terra-0', 'tavola_appoggio-0'
+const COMPONENT_TYPES = [
+  { type: 'basetta', name: 'Basetta Regolabile', count: 3 },
+  { type: 'telaio', name: 'Telaio a Portale', count: 4 },
+  { type: 'impalcato', name: 'Impalcato Metallico', count: 4 },
+  { type: 'corrente', name: 'Corrente di Collegamento', count: 4 },
+  { type: 'traverso', name: 'Traverso di Rinforzo', count: 2 },
+  { type: 'diagonale', name: 'Diagonale di Facciata', count: 2 },
+  { type: 'fermapiede', name: 'Tavola Fermapiede', count: 4 },
+  { type: 'mantovana', name: 'Mantovana (Parasassi)', count: 2 },
+  { type: 'impalcato_botola', name: 'Impalcato con Botola', count: 1 },
+  { type: 'scaletta', name: 'Scaletta di Accesso', count: 1 },
+  { type: 'parapetto', name: 'Parapetto Prefabbricato', count: 2 },
+  { type: 'cancelletto', name: 'Cancelletto di Sicurezza', count: 1 },
+  { type: 'messa_a_terra', name: 'Cavo Messa a Terra', count: 1 },
+  { type: 'palina_terra', name: 'Palina di Terra', count: 1 },
+  { type: 'tavola_appoggio', name: 'Tavola di Appoggio Legno', count: 3 }
 ];
 
-const TOTAL_COMPONENTS = ALL_COMPONENT_IDS.length;
+const generateAllIds = () => {
+  const ids: string[] = [];
+  COMPONENT_TYPES.forEach(ct => {
+    for (let i = 0; i < ct.count; i++) {
+      ids.push(`${ct.type}-${i}`);
+    }
+  });
+  return ids;
+};
+
+export const ALL_COMPONENT_IDS = generateAllIds();
+export const TOTAL_COMPONENTS = ALL_COMPONENT_IDS.length;
 
 const generateComponentData = (): Record<string, InspectionData> => {
   const components: Record<string, InspectionData> = {};
   
-  [0, 1, 2].forEach(i => {
-    const isDamaged = Math.random() < 0.3;
-    components[`basetta-${i}`] = {
-      id: `basetta-${i}`,
-      type: 'basetta',
-      name: `Basetta ${i + 1}`,
-      isDamaged,
-      integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? (Math.random() < 0.5 ? 'corrosione' : 'filettatura_spanata') : undefined,
-      damageDescription: isDamaged 
-        ? (Math.random() < 0.5 ? "Presenta segni di ruggine visibili sulla superficie metallica." : "La vite di regolazione è spanata o sporca e non scorre.")
-        : "Superficie metallica intatta, vite di regolazione funzionante."
-    };
-  });
-  
-  [0, 1].forEach(i => {
-    const isDamaged = Math.random() < 0.3;
-    components[`telaio-${i}`] = {
-      id: `telaio-${i}`,
-      type: 'telaio',
-      name: `Telaio ${i + 1}`,
-      isDamaged,
-      integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? (Math.random() < 0.5 ? 'deformazione' : 'saldatura_crepata') : undefined,
-      damageDescription: isDamaged
-        ? (Math.random() < 0.5 ? "Il montante presenta una leggera curvatura. Potrebbe compromettere la stabilità." : "Cricche visibili nelle saldature tra montanti e traversi.")
-        : "Montanti perfettamente allineati, saldature intatte."
-    };
-  });
-  
-  [0, 1, 2].forEach(i => {
-    const isDamaged = Math.random() < 0.3;
-    components[`impalcato-${i}`] = {
-      id: `impalcato-${i}`,
-      type: 'impalcato',
-      name: `Impalcato ${i + 1}`,
-      isDamaged,
-      integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? (Math.random() < 0.5 ? 'usura' : 'deformazione') : undefined,
-      damageDescription: isDamaged
-        ? (Math.random() < 0.5 ? "La superficie di calpestio mostra segni di usura eccessiva (bugnatura consumata)." : "Il piano risulta imbarcato per un precedente sovraccarico.")
-        : "Superficie di calpestio in buone condizioni, spessore regolare."
-    };
-  });
+  ALL_COMPONENT_IDS.forEach(id => {
+    const type = id.split('-')[0] as InspectionData['type'];
+    const index = parseInt(id.split('-')[1]);
+    const isDamaged = Math.random() < 0.35;
+    const ctInfo = COMPONENT_TYPES.find(ct => ct.type === type);
+    
+    let damageType: InspectionData['damageType'];
+    let damageDescription = "Componente in ottime condizioni, pronto per l'uso.";
+    
+    if (isDamaged) {
+      // Logica danni specifici per tipo
+      switch(type) {
+        case 'basetta':
+          damageType = Math.random() < 0.5 ? 'filettatura_spanata' : 'corrosione';
+          damageDescription = damageType === 'filettatura_spanata' 
+            ? "La filettatura è ostruita da cemento o deformata, la ghiera non scorre." 
+            : "Corrosione profonda sul fusto che ne riduce la sezione resistente.";
+          break;
+        case 'telaio':
+          damageType = Math.random() < 0.5 ? 'saldatura_crepata' : 'deformazione';
+          damageDescription = damageType === 'saldatura_crepata'
+            ? "Presenza di cricche visibili nella saldatura tra montante e traverso superiore."
+            : "Il montante presenta una deviazione dalla verticalità superiore a 3mm.";
+          break;
+        case 'impalcato':
+        case 'impalcato_botola':
+          damageType = Math.random() < 0.5 ? 'deformazione' : 'usura';
+          damageDescription = damageType === 'deformazione'
+            ? "I ganci di attacco sono deformati e non garantiscono l'appoggio sicuro."
+            : "La bugnatura antiscivolo è completamente consumata, rischio scivolamento.";
+          break;
+        case 'tavola_appoggio':
+        case 'fermapiede':
+          damageType = 'marcescenza';
+          damageDescription = "Il legno presenta fessurazioni longitudinali passanti o segni di marciume.";
+          break;
+        case 'corrente':
+        case 'traverso':
+        case 'diagonale':
+          damageType = 'schiacciamento';
+          damageDescription = "Il tubo presenta uno schiacciamento evidente che ne compromette la stabilità.";
+          break;
+        case 'scaletta':
+        case 'cancelletto':
+          damageType = 'mancanza_sicura';
+          damageDescription = "Il meccanismo di blocco o la molla di ritorno sono rotti o mancanti.";
+          break;
+        case 'messa_a_terra':
+        case 'palina_terra':
+          damageType = 'ossidazione_contatti';
+          damageDescription = "I punti di contatto sono pesantemente ossidati, impedendo la conducibilità.";
+          break;
+        default:
+          damageType = 'usura';
+          damageDescription = "Il componente mostra segni di usura eccessiva incompatibili con la sicurezza.";
+      }
+    }
 
-  const addSingle = (id: string, type: InspectionData['type'], name: string, dmgType: InspectionData['damageType'], descDamaged: string, descIntact: string) => {
-    const isDamaged = Math.random() < 0.4;
     components[id] = {
-      id, type, name, isDamaged,
+      id,
+      type,
+      name: `${ctInfo?.name || type} ${index + 1}`,
+      isDamaged,
       integrity: isDamaged ? Math.floor(Math.random() * 40) + 20 : 100,
-      damageType: isDamaged ? dmgType : undefined,
-      damageDescription: isDamaged ? descDamaged : descIntact
+      damageType,
+      damageDescription
     };
-  };
-
-  addSingle('mantovana-0', 'mantovana', 'Mantovana 1', 'deformazione', 'Il telaio di supporto è inclinato in modo errato o la lamiera è sfondata.', 'Struttura integra, angolazione corretta per trattenere i materiali.');
-  addSingle('fermapiede-0', 'fermapiede', 'Tavola Fermapiede 1', 'mancanza_fermi', 'Mancano i ganci di fissaggio o la tavola è pesantemente scheggiata.', 'Legno intatto, ganci di bloccaggio presenti e funzionanti.');
-  addSingle('corrente-0', 'corrente', 'Corrente 1', 'schiacciamento', 'L\'estremità di aggancio è schiacciata o l\'asta è piegata.', 'Elemento rettilineo, spine di sicurezza integre.');
-  addSingle('traverso-0', 'traverso', 'Traverso 1', 'corrosione', 'Corrosione severa sui punti di appoggio o torsione visibile.', 'Struttura lineare, punti di attacco sani.');
-  addSingle('andatoia-0', 'andatoia', 'Andatoia 1', 'deformazione', 'Parapetto integrato piegato o ganci di fissaggio deformati.', 'Piano di calpestio integro, parapetto solido.');
-  addSingle('impalcato_botola-0', 'impalcato_botola', 'Impalcato con Botola 1', 'cerniere_rotte', 'Le cerniere dello sportello sono bloccate o il meccanismo non chiude in sicurezza.', 'Sportello funzionante e a filo con il piano, cerniere lubrificate.');
-  addSingle('scaletta-0', 'scaletta', 'Scaletta 1', 'saldatura_crepata', 'Saldature dei gradini saltate o ganci di attacco superiori deformati.', 'Gradini saldi, ganci di posizionamento perfettamente sagomati.');
-  addSingle('messa_a_terra-0', 'messa_a_terra', 'Messa a Terra 1', 'corrosione', 'Il cavo è tranciato o il morsetto di collegamento è gravemente ossidato.', 'Continuità elettrica garantita, morsetto integro e cavo protetto.');
-  addSingle('tavola_appoggio-0', 'tavola_appoggio', 'Tavola di Appoggio 1', 'marcescenza', 'Il tavolone in legno presenta fessurazioni longitudinali o marcescenza.', 'Legno compatto, spessore adeguato (>4cm) e senza crepe.');
+  });
 
   return components;
 };
@@ -86,7 +111,6 @@ const generateComponentData = (): Record<string, InspectionData> => {
 export function useInspectionStore() {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [inspectedItems, setInspectedItems] = useState<Set<string>>(new Set());
-  const [loadedItems, setLoadedItems] = useState<string[]>([]);
   const [nearbyItem, setNearbyItem] = useState<string | null>(null);
   const [showInspection, setShowInspection] = useState(false);
   const [currentInspection, setCurrentInspection] = useState<InspectionData | null>(null);
@@ -94,7 +118,7 @@ export function useInspectionStore() {
   const [cameraMode, setCameraMode] = useState<'follow' | 'overview'>('follow');
   const [phaseComplete, setPhaseComplete] = useState(false);
   
-  const { addScore, reduceHealth, addError, nextPhase, unlockPhase } = useGameStore();
+  const { addScore, reduceHealth, addError, nextPhase, unlockPhase, setLoadedItems, loadedItems } = useGameStore();
   
   const inspectedItemsRef = useRef<Set<string>>(new Set());
   const phaseCompleteRef = useRef(false);
@@ -104,6 +128,7 @@ export function useInspectionStore() {
   const nextPhaseRef = useRef(nextPhase);
   const unlockPhaseRef = useRef(unlockPhase);
   const currentInspectionRef = useRef(currentInspection);
+  const loadedItemsRef = useRef(loadedItems);
   
   useEffect(() => { inspectedItemsRef.current = inspectedItems; }, [inspectedItems]);
   useEffect(() => { phaseCompleteRef.current = phaseComplete; }, [phaseComplete]);
@@ -113,6 +138,7 @@ export function useInspectionStore() {
   useEffect(() => { nextPhaseRef.current = nextPhase; }, [nextPhase]);
   useEffect(() => { unlockPhaseRef.current = unlockPhase; }, [unlockPhase]);
   useEffect(() => { currentInspectionRef.current = currentInspection; }, [currentInspection]);
+  useEffect(() => { loadedItemsRef.current = loadedItems; }, [loadedItems]);
 
   const handleInspectionComplete = useCallback((decision: 'usable' | 'damaged', correct: boolean) => {
     setShowInspection(false);
@@ -130,22 +156,19 @@ export function useInspectionStore() {
       inspectedItemsRef.current = newInspectedItems;
       
       const allInspected = ALL_COMPONENT_IDS.every(id => newInspectedItems.has(id));
-      console.log(`[DEBUG] Ispezionati: ${newInspectedItems.size}/${TOTAL_COMPONENTS}, All inspected: ${allInspected}`);
       
       if (allInspected && !phaseCompleteRef.current) {
-        console.log('[DEBUG] Fase completata! Passando a transport...');
         setPhaseComplete(true);
         phaseCompleteRef.current = true;
         
         setTimeout(() => {
           unlockPhaseRef.current('transport');
           nextPhaseRef.current();
-          console.log('[DEBUG] nextPhase() chiamato');
         }, 2000);
       }
       
       if (decision === 'usable' && !inspection.isDamaged) {
-        setLoadedItems(prev => [...prev, inspection.id]);
+        setLoadedItems([...loadedItemsRef.current, inspection.id]);
       }
     } else {
       reduceHealthRef.current(20);
