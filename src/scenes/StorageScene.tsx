@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Vector3 } from 'three';
 import { Box, Text, Center } from '@react-three/drei';
+import type { ThreeEvent } from '@react-three/fiber';
 import { useGameStore } from '../stores/gameStore';
 import Avatar3D from '../components/game/Avatar3D';
+
+const MARS_PRIMARY = '#1a472a';
+const MARS_ACCENT = '#2d6a4f';
+const MARS_SUCCESS = '#16A34A';
+const MARS_DANGER = '#DC2626';
+const MARS_FONT = 'Inter';
 
 function StorageBlock({ position, onClick, hasItem }: { 
   position: [number, number, number]; 
@@ -19,7 +26,7 @@ function StorageBlock({ position, onClick, hasItem }: {
         <meshStandardMaterial color="#5d4037" roughness={1} />
       </Box>
       {hasItem && (
-        <Text position={[0, 0.6, 0.4]} fontSize={0.15} color="#00ff00" font="Space Grotesk">
+        <Text position={[0, 0.6, 0.4]} fontSize={0.15} color={MARS_SUCCESS} font={MARS_FONT}>
           MATERIALE STOCCATO
         </Text>
       )}
@@ -28,7 +35,7 @@ function StorageBlock({ position, onClick, hasItem }: {
 }
 
 export default function StorageScene() {
-  const { loadedItems, nextPhase, unlockPhase, addError, addScore } = useGameStore();
+  const { loadedItems, nextPhase, unlockPhase, addError, addScore, pushNotice } = useGameStore();
   const [itemsInTruck, setItemsInTruck] = useState<string[]>([]);
   const [blocks, setBlocks] = useState<{pos: [number, number, number], itemId: string | null}[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -42,7 +49,7 @@ export default function StorageScene() {
     setSelectedItemId(id === selectedItemId ? null : id);
   };
 
-  const handlePlaceBlock = (e: any) => {
+  const handlePlaceBlock = (e: ThreeEvent<MouseEvent>) => {
     if (selectedItemId) return; 
     e.stopPropagation();
     const p = e.point;
@@ -73,10 +80,21 @@ export default function StorageScene() {
         messageKey: 'error.itemsOnTruck',
         phase: 'storage'
       });
-      alert("ERRORE: TUTTI I COMPONENTI DEVONO ESSERE SCARICATI E STOCCATI.");
+      pushNotice({
+        severity: 'warning',
+        title: 'Stoccaggio incompleto',
+        message: 'Tutti i componenti devono essere scaricati e posizionati sui supporti prima di chiudere la fase.',
+        phase: 'storage',
+      });
       return;
     }
     
+    pushNotice({
+      severity: 'success',
+      title: 'Stoccaggio completato',
+      message: 'Il materiale e stato scaricato correttamente. Passaggio al montaggio in corso.',
+      phase: 'storage',
+    });
     unlockPhase('assembly');
     nextPhase();
   };
@@ -135,8 +153,8 @@ export default function StorageScene() {
 
       {/* HUD Spaziale */}
       <Center top position={[0, 12, -13]}>
-        <Text fontSize={0.7} color="#ffcc00" font="Space Grotesk">STOCCAGGIO CANTIERE</Text>
-        <Text position={[0, -1, 0]} fontSize={0.25} color="white" font="Space Grotesk" maxWidth={10}>
+        <Text fontSize={0.7} color={MARS_PRIMARY} font={MARS_FONT}>STOCCAGGIO CANTIERE</Text>
+        <Text position={[0, -1, 0]} fontSize={0.25} color={MARS_ACCENT} font={MARS_FONT} maxWidth={10}>
           1. CLICCA A TERRA PER POSIZIONARE I CEPPI (ISOLAMENTO UMIDITÀ)
           {"\n"}2. SCARICA TUTTI I PEZZI SUI CEPPI
         </Text>
@@ -148,7 +166,7 @@ export default function StorageScene() {
           <ringGeometry args={[6.8, 7, 64]} />
           <meshBasicMaterial color="#ff0000" transparent opacity={0.6} />
         </mesh>
-        <Text position={[0, 0.1, 0]} rotation={[-Math.PI/2, 0, 0]} fontSize={0.3} color="#ff0000" font="Space Grotesk">
+        <Text position={[0, 0.1, 0]} rotation={[-Math.PI/2, 0, 0]} fontSize={0.3} color={MARS_DANGER} font={MARS_FONT}>
           ZONA PERICOLO - NON STOCCARE
         </Text>
       </group>
@@ -158,7 +176,9 @@ export default function StorageScene() {
         <Box args={[3, 1.2, 0.2]} castShadow>
           <meshStandardMaterial color={itemsInTruck.length === 0 ? "#ffcc00" : "#222"} />
         </Box>
-        <Text position={[0, 0, 0.15]} fontSize={0.2} color="black" fontWeight={900}>FINE SCARICO</Text>
+        <Text position={[0, 0, 0.15]} fontSize={0.2} color={itemsInTruck.length === 0 ? '#0a0a0a' : '#f5f2ed'} font={MARS_FONT} fontWeight={900}>
+          FINE SCARICO
+        </Text>
       </group>
     </group>
   );

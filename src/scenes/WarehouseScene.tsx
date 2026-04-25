@@ -1,9 +1,15 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Vector3 } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Box, Cylinder, Text, Float, Center } from '@react-three/drei';
 import Avatar3D from '../components/game/Avatar3D';
 import type { InspectionData } from '../components/game/ComponentInspection';
+
+const MARS_PRIMARY = '#1a472a';
+const MARS_ACCENT = '#2d6a4f';
+const MARS_SUCCESS = '#16A34A';
+const MARS_MUTED = '#555555';
+const MARS_FONT = 'Inter';
 
 interface ScaffoldingComponentProps {
   position: Vector3;
@@ -34,7 +40,7 @@ function WarehouseComponent({ position, onClick, isSelected, isInspected, isNear
   }, [type]);
 
   const color = isInspected ? '#00ff00' : (isSelected ? '#ffcc00' : isNearby ? '#00ffff' : baseColor);
-  
+
   return (
     <group position={position} onClick={onClick}>
       <Float speed={isSelected ? 5 : 0} rotationIntensity={0.2} floatIntensity={0.2}>
@@ -52,26 +58,26 @@ function WarehouseComponent({ position, onClick, isSelected, isInspected, isNear
           {type === 'messa_a_terra' && <Box args={[0.1, 0.1, 0.1]} />}
           {/* Default fallback */}
           {!['basetta', 'telaio', 'impalcato', 'corrente', 'traverso', 'diagonale', 'fermapiede', 'tavola_appoggio', 'mantovana', 'scaletta', 'cancelletto', 'palina_terra', 'messa_a_terra'].includes(type) && <Box args={[0.5, 0.5, 0.5]} />}
-          
-          <meshStandardMaterial 
-            color={color} 
-            metalness={0.7} 
-            roughness={0.3} 
+
+          <meshStandardMaterial
+            color={color}
+            metalness={0.7}
+            roughness={0.3}
             emissive={isSelected ? '#ffcc00' : '#000'}
             emissiveIntensity={isSelected ? 0.5 : 0}
           />
         </mesh>
 
         {isInspected && (
-          <Text position={[0, 1.2, 0]} fontSize={0.2} color="#00ff00" font="Space Grotesk">✓ OK</Text>
+          <Text position={[0, 1.2, 0]} fontSize={0.2} color={MARS_SUCCESS} font={MARS_FONT}>✓ OK</Text>
         )}
-        
+
         {isNearby && !isInspected && (
           <group position={[0, 1.5, 0]}>
             <Box args={[0.4, 0.2, 0.01]}>
               <meshBasicMaterial color="black" />
             </Box>
-            <Text position={[0, 0, 0.02]} fontSize={0.15} color="#00ffff" font="Space Grotesk">[E] ISPEZIONA</Text>
+            <Text position={[0, 0, 0.02]} fontSize={0.15} color={MARS_ACCENT} font={MARS_FONT}>[E] ISPEZIONA</Text>
           </group>
         )}
       </Float>
@@ -108,13 +114,13 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
     componentData,
     cameraMode, setCameraMode,
   } = inspection;
-  
+
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 12));
   const { camera } = useThree();
   const avatarPosRef = useRef(avatarPosition);
   const nearbyItemRef = useRef(nearbyItem);
   const showInspectionRef = useRef(showInspection);
-  
+
   useEffect(() => { avatarPosRef.current = avatarPosition; }, [avatarPosition]);
   useEffect(() => { nearbyItemRef.current = nearbyItem; }, [nearbyItem]);
   useEffect(() => { showInspectionRef.current = showInspection; }, [showInspection]);
@@ -123,7 +129,7 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
   const componentWorldPositions = useMemo(() => {
     const positions: Record<string, Vector3> = {};
     const ids = Object.keys(componentData);
-    
+
     // Organizziamo in settori (file)
     const itemsPerRow = 6;
     const rowSpacing = 4;
@@ -138,17 +144,17 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         -row * rowSpacing - 5
       );
     });
-    
+
     return positions;
   }, [componentData]);
-  
+
   useFrame(() => {
     if (cameraMode === 'overview') return;
-    
+
     let closestItem: string | null = null;
     let closestDistance = Infinity;
     const interactionDistance = 3.5;
-    
+
     Object.entries(componentWorldPositions).forEach(([id, pos]) => {
       const distance = avatarPosRef.current.distanceTo(pos);
       if (distance < interactionDistance && distance < closestDistance) {
@@ -156,12 +162,36 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         closestItem = id;
       }
     });
-    
+
     if (closestItem !== nearbyItemRef.current) {
       setNearbyItem(closestItem);
     }
   });
-  
+
+  const handleInspect = useCallback((id: string) => {
+    const component = componentData[id];
+    if (!component || inspectedItems.has(id)) return;
+
+    setSelectedItem(id);
+    setCurrentInspection(component);
+    setShowInspection(true);
+    setCameraMode('overview');
+
+    const pos = componentWorldPositions[id];
+    const overviewPos = pos.clone().add(new Vector3(2, 2, 2));
+    camera.position.copy(overviewPos);
+    camera.lookAt(pos);
+  }, [
+    camera,
+    componentData,
+    componentWorldPositions,
+    inspectedItems,
+    setCameraMode,
+    setCurrentInspection,
+    setSelectedItem,
+    setShowInspection,
+  ]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'e' && nearbyItemRef.current && !showInspectionRef.current) {
@@ -170,23 +200,8 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-  
-  const handleInspect = (id: string) => {
-    const component = componentData[id];
-    if (!component || inspectedItems.has(id)) return;
-    
-    setSelectedItem(id);
-    setCurrentInspection(component);
-    setShowInspection(true);
-    setCameraMode('overview');
-    
-    const pos = componentWorldPositions[id];
-    const overviewPos = pos.clone().add(new Vector3(2, 2, 2));
-    camera.position.copy(overviewPos);
-    camera.lookAt(pos);
-  };
-  
+  }, [handleInspect]);
+
   useFrame(() => {
     if (cameraMode === 'follow') {
       const cameraOffset = new Vector3(0, 8, 10);
@@ -234,19 +249,19 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
         );
       })}
 
-      <Avatar3D 
-        position={[0, 0, 12]} 
-        hasHelmet={true} 
-        hasHarness={true} 
+      <Avatar3D
+        position={[0, 0, 12]}
+        hasHelmet={true}
+        hasHarness={true}
         onMove={setAvatarPosition}
       />
 
       {/* UI Spaziale */}
       <Center top position={[0, 6, -15]}>
-        <Text fontSize={0.8} color="#FFCC00" font="Space Grotesk" anchorX="center">
+        <Text fontSize={0.8} color={MARS_PRIMARY} font={MARS_FONT} anchorX="center">
           LOGISTICA E ISPEZIONE
         </Text>
-        <Text position={[0, -0.8, 0]} fontSize={0.3} color="#ffffff" font="Space Grotesk">
+        <Text position={[0, -0.8, 0]} fontSize={0.3} color={MARS_MUTED} font={MARS_FONT}>
           AREA VERIFICA COMPONENTI D.LGS 81/08
         </Text>
       </Center>

@@ -5,9 +5,9 @@ export default function ScoreDisplay() {
   const { totalScore } = useGameStore();
 
   return (
-    <div className="score-display">
+    <div className="score-display" role="status" aria-live="polite">
       <span className="score-label">
-        <FormattedMessage id="score.points" defaultMessage="Punti" />
+        <FormattedMessage id="score.points" defaultMessage="Punteggio" />
       </span>
       <span className="score-value">{totalScore}</span>
     </div>

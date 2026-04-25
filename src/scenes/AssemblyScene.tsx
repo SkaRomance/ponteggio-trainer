@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import { Vector3 } from 'three';
 import { Box, Text, Center, Html } from '@react-three/drei';
 import { useGameStore } from '../stores/gameStore';
@@ -15,6 +15,49 @@ const ASSEMBLY_STEPS = [
   { id: 'parapetto', label: '7. PARAPETTI DI SICUREZZA', count: 4 },
   { id: 'ancoraggio', label: '8. ANCORAGGI STRUTTURALI', count: 2 },
 ];
+
+const MARS_PRIMARY = '#1a472a';
+const MARS_ACCENT = '#2d6a4f';
+const MARS_SUCCESS = '#16A34A';
+const MARS_DANGER = '#DC2626';
+const MARS_TEXT = '#0a0a0a';
+const MARS_MUTED = '#555555';
+const MARS_BORDER = '#d1cdc7';
+const MARS_FONT = 'Inter';
+
+const panelShellStyle: CSSProperties = {
+  width: 'min(420px, 90vw)',
+  padding: '0.75rem',
+  background: 'rgba(10,10,10,0.18)',
+  borderRadius: '28px',
+  backdropFilter: 'blur(14px)',
+  boxShadow: '0 20px 60px rgba(10,10,10,0.18)',
+};
+
+const panelCardStyle: CSSProperties = {
+  background: '#ffffff',
+  border: `1px solid ${MARS_BORDER}`,
+  borderRadius: '22px',
+  padding: '1.5rem',
+  color: MARS_TEXT,
+  fontFamily: 'Inter, sans-serif',
+  boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+};
+
+const getToggleButtonStyle = (active: boolean, disabled = false): CSSProperties => ({
+  width: '100%',
+  padding: '0.95rem 1rem',
+  borderRadius: '999px',
+  border: `1px solid ${active ? MARS_PRIMARY : MARS_BORDER}`,
+  background: active ? MARS_PRIMARY : '#f9f7f4',
+  color: active ? '#ffffff' : MARS_PRIMARY,
+  fontFamily: 'Inter, sans-serif',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.5 : 1,
+  boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+});
 
 function SnapPoint({ position, type, onSnap, active }: { 
   position: [number, number, number], 
@@ -35,7 +78,7 @@ function SnapPoint({ position, type, onSnap, active }: {
         </Box>
       </mesh>
       {active && (
-        <Text position={[0, 0.8, 0]} fontSize={0.15} color="#ffcc00" font="Space Grotesk">
+        <Text position={[0, 0.8, 0]} fontSize={0.15} color={MARS_ACCENT} font={MARS_FONT}>
           MONTA {type.toUpperCase()}
         </Text>
       )}
@@ -45,7 +88,7 @@ function SnapPoint({ position, type, onSnap, active }: {
 
 export default function AssemblyScene() {
   const { 
-    addScore, addError, nextPhase, unlockPhase, 
+    addScore, addError, nextPhase, unlockPhase, pushNotice,
     isHarnessed, setHarnessed, isHooked, setHooked,
     assembledItems, addAssembledItem,
     lastAssemblyStep, setLastAssemblyStep
@@ -83,7 +126,12 @@ export default function AssemblyScene() {
         messageKey: 'error.ppeFall',
         phase: 'assembly'
       });
-      alert("ERRORE CRITICO: MANCATO ANCORAGGIO IN QUOTA. PROCEDURA BLOCCATA.");
+      pushNotice({
+        severity: 'error',
+        title: 'Ancora il cordino',
+        message: 'Sei in quota senza ancoraggio attivo. La procedura di montaggio resta bloccata.',
+        phase: 'assembly',
+      });
       return;
     }
 
@@ -94,7 +142,12 @@ export default function AssemblyScene() {
         messageKey: 'error.sequence',
         phase: 'assembly'
       });
-      alert(`ERRORE Pi.M.U.S.: SEQUENZA ERRATA. INSTALLARE: ${currentStep.label}`);
+      pushNotice({
+        severity: 'warning',
+        title: 'Sequenza errata',
+        message: `Lo step richiesto adesso e: ${currentStep.label}.`,
+        phase: 'assembly',
+      });
       return;
     }
 
@@ -105,8 +158,19 @@ export default function AssemblyScene() {
     if (itemsOfThisType >= currentStep.count) {
       if (lastAssemblyStep < ASSEMBLY_STEPS.length - 1) {
         setLastAssemblyStep(lastAssemblyStep + 1);
+        pushNotice({
+          severity: 'success',
+          title: 'Step completato',
+          message: `Passaggio successivo: ${ASSEMBLY_STEPS[lastAssemblyStep + 1].label}.`,
+          phase: 'assembly',
+        });
       } else {
-        alert("MONTAGGIO COMPLETATO SECONDO Pi.M.U.S.");
+        pushNotice({
+          severity: 'success',
+          title: 'Montaggio completato',
+          message: 'La procedura Pi.M.U.S. e stata completata correttamente. Passaggio alla verifica d’uso.',
+          phase: 'assembly',
+        });
         unlockPhase('use');
         nextPhase();
       }
@@ -155,64 +219,57 @@ export default function AssemblyScene() {
 
       {/* HUD PROCEDURA Pi.M.U.S. */}
       <Html position={[-12, 10, 0]}>
-        <div style={{ 
-          background: 'rgba(0,0,0,0.95)', 
-          color: '#ffcc00', 
-          padding: '2rem', 
-          border: '4px solid #ffcc00',
-          fontFamily: 'Space Grotesk',
-          width: '400px',
-          boxShadow: '0 0 30px rgba(255,204,0,0.2)'
-        }}>
-          <h2 style={{ margin: '0 0 1.5rem 0', fontWeight: 900, borderBottom: '2px solid #ffcc00', paddingBottom: '0.5rem' }}>
-            PROTOCOLLO MONTAGGIO
-          </h2>
-          
-          <div style={{ marginBottom: '2rem' }}>
-            <span style={{ color: '#666', fontSize: '0.8rem' }}>FASE ATTUALE:</span><br/>
-            <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{currentStep.label}</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <button 
-              onClick={() => setHarnessed(!isHarnessed)}
-              style={{ 
-                background: isHarnessed ? '#ffcc00' : '#222', 
-                color: isHarnessed ? 'black' : 'white',
-                border: 'none', padding: '1rem', fontWeight: 900, cursor: 'pointer',
-                fontSize: '1rem'
-              }}
-            >
-              {isHarnessed ? 'IMBRACATURA ATTIVA' : 'INDOSSA IMBRACATURA'}
-            </button>
-            <button 
-              onClick={() => setHooked(!isHooked)}
-              disabled={!isHarnessed}
-              style={{ 
-                background: isHooked ? '#ffcc00' : '#222', 
-                color: isHooked ? 'black' : 'white',
-                border: 'none', padding: '1rem', fontWeight: 900, cursor: 'pointer',
-                fontSize: '1rem', opacity: isHarnessed ? 1 : 0.3
-              }}
-            >
-              {isHooked ? 'CORDINO ANCORATO' : 'ANCORA CORDINO'}
-            </button>
-          </div>
-
-          {avatarPosition.y > 1.8 && !isHooked && (
-            <div style={{ 
-              background: 'red', color: 'white', marginTop: '1.5rem', 
-              padding: '1rem', fontWeight: 900, textAlign: 'center',
-              animation: 'blink 0.5s infinite' 
-            }}>
-              PERICOLO CADUTA: NON ANCORATO
+        <div style={panelShellStyle}>
+          <div style={panelCardStyle}>
+            <div style={{ marginBottom: '1.25rem' }}>
+              <span style={{ display: 'block', marginBottom: '0.35rem', color: MARS_MUTED, fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+                PROCEDURA Pi.M.U.S.
+              </span>
+              <h2 style={{ margin: 0, fontFamily: '"Playfair Display", serif', fontSize: '1.7rem', fontWeight: 700, color: MARS_PRIMARY }}>
+                Protocollo montaggio
+              </h2>
             </div>
-          )}
+
+            <div style={{ marginBottom: '1.5rem', padding: '1rem 1.1rem', borderRadius: '18px', background: '#f5f2ed', border: `1px solid ${MARS_BORDER}` }}>
+              <span style={{ display: 'block', marginBottom: '0.4rem', color: MARS_MUTED, fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+                Fase attuale
+              </span>
+              <span style={{ fontSize: '1rem', fontWeight: 700, color: MARS_TEXT, lineHeight: 1.4 }}>
+                {currentStep.label}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <button onClick={() => setHarnessed(!isHarnessed)} style={getToggleButtonStyle(isHarnessed)}>
+                {isHarnessed ? 'IMBRACATURA ATTIVA' : 'INDOSSA IMBRACATURA'}
+              </button>
+              <button onClick={() => setHooked(!isHooked)} disabled={!isHarnessed} style={getToggleButtonStyle(isHooked, !isHarnessed)}>
+                {isHooked ? 'CORDINO ANCORATO' : 'ANCORA CORDINO'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+              <div style={{ flex: 1, padding: '0.85rem 1rem', borderRadius: '18px', background: '#f9f7f4', border: `1px solid ${MARS_BORDER}` }}>
+                <span style={{ display: 'block', color: MARS_MUTED, fontSize: '0.74rem', marginBottom: '0.3rem' }}>Imbracatura</span>
+                <strong style={{ color: isHarnessed ? MARS_SUCCESS : MARS_MUTED }}>{isHarnessed ? 'Attiva' : 'Assente'}</strong>
+              </div>
+              <div style={{ flex: 1, padding: '0.85rem 1rem', borderRadius: '18px', background: '#f9f7f4', border: `1px solid ${MARS_BORDER}` }}>
+                <span style={{ display: 'block', color: MARS_MUTED, fontSize: '0.74rem', marginBottom: '0.3rem' }}>Ancoraggio</span>
+                <strong style={{ color: isHooked ? MARS_SUCCESS : MARS_DANGER }}>{isHooked ? 'Confermato' : 'Mancante'}</strong>
+              </div>
+            </div>
+
+            {avatarPosition.y > 1.8 && !isHooked && (
+              <div style={{ marginTop: '1rem', padding: '0.95rem 1rem', borderRadius: '18px', border: `1px solid ${MARS_DANGER}`, background: 'rgba(220, 38, 38, 0.08)', color: MARS_DANGER, fontWeight: 700, textAlign: 'center' }}>
+                Pericolo caduta: operatore non ancorato
+              </div>
+            )}
+          </div>
         </div>
       </Html>
 
       <Center top position={[0, 18, -8]}>
-        <Text fontSize={1} color="white" font="Space Grotesk">MONTAGGIO STRUTTURALE</Text>
+        <Text fontSize={1} color={MARS_PRIMARY} font={MARS_FONT}>MONTAGGIO STRUTTURALE</Text>
       </Center>
     </group>
   );

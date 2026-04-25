@@ -13,6 +13,7 @@ export type GamePhase =
   | 'completed';     // Fine gioco
 
 export type ErrorSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type NoticeSeverity = 'success' | 'warning' | 'error' | 'info';
 
 export interface GameError {
   id: string;
@@ -30,6 +31,16 @@ export interface PhaseScore {
   errors: GameError[];
   completed: boolean;
   bonusPoints: number;
+}
+
+export interface GameNotice {
+  id: string;
+  title?: string;
+  message: string;
+  severity: NoticeSeverity;
+  phase?: GamePhase;
+  persistent?: boolean;
+  timestamp: number;
 }
 
 export interface GameState {
@@ -63,6 +74,12 @@ export interface GameState {
   errors: GameError[];
   addError: (error: Omit<GameError, 'id' | 'timestamp'>) => void;
   clearErrors: () => void;
+
+  // Notices
+  notices: GameNotice[];
+  pushNotice: (notice: Omit<GameNotice, 'id' | 'timestamp'>) => void;
+  dismissNotice: (id: string) => void;
+  clearNotices: () => void;
   
   // Game State
   isPlaying: boolean;
@@ -76,6 +93,8 @@ export interface GameState {
   // Progress
   unlockedPhases: GamePhase[];
   unlockPhase: (phase: GamePhase) => void;
+  completedPhases: GamePhase[];
+  markPhaseCompleted: (phase: GamePhase) => void;
 
   // Storage & Logistics State
   loadedItems: string[];
@@ -147,6 +166,10 @@ export const useGameStore = create<GameState>((set, get) => {
       const current = get().currentPhase;
       const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
       const currentIndex = phaseOrder.indexOf(current);
+
+      if (current !== 'menu' && current !== 'completed') {
+        get().markPhaseCompleted(current);
+      }
       
       if (currentIndex < phaseOrder.length - 1) {
         const next = phaseOrder[currentIndex + 1];
@@ -196,6 +219,23 @@ export const useGameStore = create<GameState>((set, get) => {
       get().reduceHealth(severityPenalty[error.severity]);
     },
     clearErrors: () => set({ errors: [] }),
+
+    // Notices
+    notices: [],
+    pushNotice: (notice) => {
+      const newNotice: GameNotice = {
+        ...notice,
+        id: `notice-${Date.now()}-${Math.random()}`,
+        timestamp: Date.now(),
+      };
+      set((state) => ({
+        notices: [...state.notices, newNotice].slice(-5),
+      }));
+    },
+    dismissNotice: (id) => set((state) => ({
+      notices: state.notices.filter((notice) => notice.id !== id),
+    })),
+    clearNotices: () => set({ notices: [] }),
     
     // Game State
     isPlaying: false,
@@ -217,6 +257,9 @@ export const useGameStore = create<GameState>((set, get) => {
         isHooked: false,
         assembledItems: [],
         lastAssemblyStep: 0,
+        unlockedPhases: ['warehouse'],
+        completedPhases: [],
+        notices: [],
       });
     },
     pauseGame: () => set({ isPaused: true }),
@@ -238,6 +281,9 @@ export const useGameStore = create<GameState>((set, get) => {
       isHooked: false,
       assembledItems: [],
       lastAssemblyStep: 0,
+      unlockedPhases: ['warehouse'],
+      completedPhases: [],
+      notices: [],
     }),
     
     // Progress
@@ -245,6 +291,13 @@ export const useGameStore = create<GameState>((set, get) => {
     unlockPhase: (phase) => set((state) => ({
       unlockedPhases: [...new Set([...state.unlockedPhases, phase])],
     })),
+    completedPhases: [],
+    markPhaseCompleted: (phase) => {
+      if (phase === 'menu' || phase === 'completed') return;
+      set((state) => ({
+        completedPhases: [...new Set([...state.completedPhases, phase])],
+      }));
+    },
 
     // Storage & Logistics State
     loadedItems: [],

@@ -13,6 +13,8 @@ import HealthBar from './components/ui/HealthBar';
 import ScoreDisplay from './components/ui/ScoreDisplay';
 import PhaseSelector from './components/ui/PhaseSelector';
 import LanguageSelector from './components/ui/LanguageSelector';
+import PhaseBriefing from './components/ui/PhaseBriefing';
+import NoticeCenter from './components/ui/NoticeCenter';
 import ControlsHelp from './components/game/ControlsHelp';
 import VideoTutorial, { TutorialMenu } from './components/game/VideoTutorial';
 import ComponentInspection from './components/game/ComponentInspection';
@@ -51,7 +53,7 @@ function App() {
       inspection.setPhaseComplete(false);
       prevPhaseRef.current = currentPhase;
     }
-  }, [currentPhase]);
+  }, [currentPhase, inspection]);
 
   // Apply RTL direction and font for Arabic
   useEffect(() => {
@@ -73,18 +75,18 @@ function App() {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
         <div className="overlay-container">
-          <div className="overlay-content" style={{ border: '4px solid var(--danger-red)' }}>
-            <h1 style={{ color: 'var(--danger-red)', fontSize: 'clamp(2rem, 8vw, 4rem)', fontWeight: 900, marginBottom: '1.5rem' }}>
-              <FormattedMessage id="game.over.title" defaultMessage="GAME OVER" />
+          <div className="overlay-content" data-variant="danger">
+            <h1>
+              <FormattedMessage id="game.over.title" defaultMessage="Game over" />
             </h1>
-            <p style={{ fontSize: 'clamp(1rem, 3vw, 1.25rem)', color: '#888', marginBottom: '2.5rem' }}>
-              <FormattedMessage 
-                id="game.over.message" 
-                defaultMessage="HAI COMMESSO ERRORI CRITICI NELLA SICUREZZA." 
+            <p>
+              <FormattedMessage
+                id="game.over.message"
+                defaultMessage="Hai commesso errori critici nella sicurezza."
               />
             </p>
-            <button onClick={resetGame} className="start-btn" style={{ background: 'var(--danger-red)', color: 'white' }}>
-              <FormattedMessage id="game.restart" defaultMessage="RICOMINCIA" />
+            <button type="button" onClick={resetGame} className="start-btn">
+              <FormattedMessage id="game.restart" defaultMessage="Ricomincia" />
             </button>
           </div>
         </div>
@@ -98,17 +100,17 @@ function App() {
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
         <div className="overlay-container">
           <div className="overlay-content">
-            <h1 style={{ color: 'var(--mars-yellow)', fontSize: 'clamp(2rem, 8vw, 4rem)', fontWeight: 900, marginBottom: '1.5rem' }}>
-              <FormattedMessage id="game.completed.title" defaultMessage="CORSO COMPLETATO!" />
+            <h1>
+              <FormattedMessage id="game.completed.title" defaultMessage="Corso completato" />
             </h1>
-            <p style={{ fontSize: 'clamp(1rem, 3vw, 1.25rem)', color: '#888', marginBottom: '2.5rem' }}>
-              <FormattedMessage 
-                id="game.completed.message" 
-                defaultMessage="HAI COMPLETATO TUTTE LE FASI DEL CORSO DI SICUREZZA." 
+            <p>
+              <FormattedMessage
+                id="game.completed.message"
+                defaultMessage="Hai completato tutte le fasi del corso di sicurezza."
               />
             </p>
-            <button onClick={resetGame} className="start-btn">
-              <FormattedMessage id="game.restart" defaultMessage="TORNA AL MENU" />
+            <button type="button" onClick={resetGame} className="start-btn">
+              <FormattedMessage id="game.restart" defaultMessage="Torna al menu" />
             </button>
           </div>
         </div>
@@ -119,13 +121,19 @@ function App() {
 
   return (
     <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
-      <div className="game-container" style={{ direction: getDirection(locale) }}>
+      <div className="game-container" dir={getDirection(locale)}>
         {/* Header UI */}
         <header className="game-header">
           <div className="header-left">
-            <h1 className="game-title">
-              <FormattedMessage id="app.title" defaultMessage="MARS-Safe Ponteggio Trainer" />
-            </h1>
+            <img className="mars-logo" src="/logo-mars.png" alt="Mars Compliance" />
+            <div className="game-title-group">
+              <h1 className="game-title">
+                <FormattedMessage id="app.title" defaultMessage="MARS-Safe Ponteggio Trainer" />
+              </h1>
+              <span className="game-subtitle">
+                <FormattedMessage id="app.subtitle" defaultMessage="Training professionale" />
+              </span>
+            </div>
             <LanguageSelector />
           </div>
           <div className="header-right">
@@ -137,17 +145,18 @@ function App() {
         {/* Phase Navigation */}
         <nav className="phase-nav">
           <PhaseSelector />
-          <button 
+          <button
+            type="button"
             className="tutorial-btn"
             onClick={() => setShowTutorialMenu(true)}
           >
-            <FormattedMessage id="tutorial.button" defaultMessage="📹 Tutorial" />
+            <FormattedMessage id="tutorial.button" defaultMessage="Tutorial" />
           </button>
         </nav>
 
         {/* Progresso ispezione magazzino */}
         {currentPhase === 'warehouse' && (
-          <div className="warehouse-progress">
+          <div className="warehouse-progress" aria-live="polite">
             <div className="progress-info">
               <span>Componenti ispezionati: {inspection.inspectedItems.size} / {TOTAL_COMPONENTS}</span>
               {inspection.phaseComplete && (
@@ -155,8 +164,8 @@ function App() {
               )}
             </div>
             <div className="progress-bar">
-              <div 
-                className="progress-fill" 
+              <div
+                className="progress-fill"
                 style={{ width: `${(inspection.inspectedItems.size / TOTAL_COMPONENTS) * 100}%` }}
               />
             </div>
@@ -167,24 +176,24 @@ function App() {
         <div className="scene-container">
           <Canvas shadows camera={{ position: [0, 5, 10], fov: 50 }}>
             <PerspectiveCamera makeDefault position={[0, 5, 10]} />
-            <OrbitControls 
-              enablePan={true} 
-              enableZoom={true} 
+            <OrbitControls
+              enablePan={true}
+              enableZoom={true}
               enableRotate={true}
               minDistance={3}
               maxDistance={20}
               maxPolarAngle={Math.PI / 2 - 0.1}
             />
             <ambientLight intensity={0.5} />
-            <directionalLight 
-              position={[10, 10, 5]} 
-              intensity={1} 
+            <directionalLight
+              position={[10, 10, 5]}
+              intensity={1}
               castShadow
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
             />
             <Environment preset="city" />
-            
+
             <Suspense fallback={null}>
               {currentPhase === 'warehouse' && <WarehouseScene inspection={inspection} />}
               {currentPhase === 'transport' && <TransportScene />}
@@ -194,9 +203,9 @@ function App() {
               {currentPhase === 'disassembly' && <DisassemblyScene />}
               {currentPhase === 'return' && <ReturnScene />}
               {currentPhase !== 'warehouse' && currentPhase !== 'transport' && currentPhase !== 'storage' && currentPhase !== 'assembly' && currentPhase !== 'use' && currentPhase !== 'disassembly' && currentPhase !== 'return' && phaseConfig[currentPhase] && (
-                <PlaceholderScene 
-                  phaseName={phaseConfig[currentPhase].name} 
-                  phaseIcon={phaseConfig[currentPhase].icon} 
+                <PlaceholderScene
+                  phaseName={phaseConfig[currentPhase].name}
+                  phaseIcon={phaseConfig[currentPhase].icon}
                 />
               )}
             </Suspense>
@@ -208,9 +217,12 @@ function App() {
           <ControlsHelp />
         </div>
 
+        <PhaseBriefing />
+        <NoticeCenter />
+
         {/* Tutorial Menu */}
         {showTutorialMenu && (
-          <TutorialMenu 
+          <TutorialMenu
             onSelect={(id) => {
               setCurrentTutorial(id);
               setShowTutorialMenu(false);

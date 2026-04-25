@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { InspectionData } from '../components/game/ComponentInspection';
 import { useGameStore } from './gameStore';
 
@@ -118,7 +118,7 @@ export function useInspectionStore() {
   const [cameraMode, setCameraMode] = useState<'follow' | 'overview'>('follow');
   const [phaseComplete, setPhaseComplete] = useState(false);
   
-  const { addScore, reduceHealth, addError, nextPhase, unlockPhase, setLoadedItems, loadedItems } = useGameStore();
+  const { addScore, reduceHealth, addError, nextPhase, unlockPhase, setLoadedItems, loadedItems, pushNotice } = useGameStore();
   
   const inspectedItemsRef = useRef<Set<string>>(new Set());
   const phaseCompleteRef = useRef(false);
@@ -127,6 +127,7 @@ export function useInspectionStore() {
   const addErrorRef = useRef(addError);
   const nextPhaseRef = useRef(nextPhase);
   const unlockPhaseRef = useRef(unlockPhase);
+  const pushNoticeRef = useRef(pushNotice);
   const currentInspectionRef = useRef(currentInspection);
   const loadedItemsRef = useRef(loadedItems);
   
@@ -137,10 +138,11 @@ export function useInspectionStore() {
   useEffect(() => { addErrorRef.current = addError; }, [addError]);
   useEffect(() => { nextPhaseRef.current = nextPhase; }, [nextPhase]);
   useEffect(() => { unlockPhaseRef.current = unlockPhase; }, [unlockPhase]);
+  useEffect(() => { pushNoticeRef.current = pushNotice; }, [pushNotice]);
   useEffect(() => { currentInspectionRef.current = currentInspection; }, [currentInspection]);
   useEffect(() => { loadedItemsRef.current = loadedItems; }, [loadedItems]);
 
-  const handleInspectionComplete = useCallback((decision: 'usable' | 'damaged', correct: boolean) => {
+  const handleInspectionComplete = (decision: 'usable' | 'damaged', correct: boolean) => {
     setShowInspection(false);
     setCameraMode('follow');
     
@@ -160,6 +162,12 @@ export function useInspectionStore() {
       if (allInspected && !phaseCompleteRef.current) {
         setPhaseComplete(true);
         phaseCompleteRef.current = true;
+        pushNoticeRef.current({
+          severity: 'success',
+          title: 'Fase completata',
+          message: 'Tutti i componenti sono stati ispezionati. Passaggio al trasporto in corso.',
+          phase: 'warehouse',
+        });
         
         setTimeout(() => {
           unlockPhaseRef.current('transport');
@@ -178,8 +186,14 @@ export function useInspectionStore() {
         messageKey: 'error.wrongEvaluation',
         phase: 'warehouse',
       });
+      pushNoticeRef.current({
+        severity: 'error',
+        title: 'Valutazione errata',
+        message: 'Il componente e stato classificato in modo non corretto. Rivedi il danno prima di proseguire.',
+        phase: 'warehouse',
+      });
     }
-  }, []);
+  };
 
   return {
     selectedItem,

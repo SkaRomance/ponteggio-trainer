@@ -6,32 +6,32 @@ export default function ControlsHelp() {
       <h4>
         <FormattedMessage id="controls.title" defaultMessage="Controlli" />
       </h4>
-      <div className="controls-grid">
-        <div className="control-item">
+      <ul className="controls-grid" aria-label="Controlli di gioco">
+        <li className="control-item">
           <kbd>W</kbd>
           <span><FormattedMessage id="controls.forward" defaultMessage="Avanti" /></span>
-        </div>
-        <div className="control-item">
+        </li>
+        <li className="control-item">
           <kbd>S</kbd>
           <span><FormattedMessage id="controls.backward" defaultMessage="Indietro" /></span>
-        </div>
-        <div className="control-item">
+        </li>
+        <li className="control-item">
           <kbd>A</kbd>
           <span><FormattedMessage id="controls.left" defaultMessage="Sinistra" /></span>
-        </div>
-        <div className="control-item">
+        </li>
+        <li className="control-item">
           <kbd>D</kbd>
           <span><FormattedMessage id="controls.right" defaultMessage="Destra" /></span>
-        </div>
-        <div className="control-item">
+        </li>
+        <li className="control-item">
           <kbd>E</kbd>
           <span><FormattedMessage id="controls.e" defaultMessage="Interagisci" /></span>
-        </div>
-      </div>
+        </li>
+      </ul>
       <p className="controls-tip">
-        <FormattedMessage 
-          id="controls.tip" 
-          defaultMessage="Avvicinati ai componenti per ispezionarli" 
+        <FormattedMessage
+          id="controls.tip"
+          defaultMessage="Avvicinati ai componenti e premi E per avviare l'ispezione."
         />
       </p>
     </div>

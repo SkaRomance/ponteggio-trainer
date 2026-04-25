@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 interface VideoTutorialProps {
@@ -34,17 +34,37 @@ const tutorialVideos: Record<string, { title: string; description: string; durat
 export default function VideoTutorial({ videoId, title, onClose, onComplete }: VideoTutorialProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-  // Video ref for real video element (future implementation)
+  const progressIntervalRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
 
   const videoInfo = tutorialVideos[videoId];
+  const tutorialTitleId = videoInfo?.title;
+
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, []);
 
   const handlePlay = () => {
+    if (isPlaying || progress === 100) {
+      return;
+    }
+
     setIsPlaying(true);
-    // Simula progresso video (in produzione usare evento timeupdate)
-    const interval = setInterval(() => {
+
+    if (progressIntervalRef.current) {
+      window.clearInterval(progressIntervalRef.current);
+    }
+
+    progressIntervalRef.current = window.setInterval(() => {
       setProgress(p => {
         if (p >= 100) {
-          clearInterval(interval);
+          if (progressIntervalRef.current) {
+            window.clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
           onComplete?.();
           return 100;
         }
@@ -54,66 +74,81 @@ export default function VideoTutorial({ videoId, title, onClose, onComplete }: V
   };
 
   return (
-    <div className="video-tutorial-overlay">
-      <div className="video-tutorial-container">
-        <div className="video-header">
-          <h3>{title}</h3>
-          <button className="close-btn" onClick={onClose}>×</button>
+    <div className="video-tutorial-overlay tutorial-overlay">
+      <div className="video-tutorial-container tutorial-panel">
+        <div className="video-header tutorial-panel-header">
+          <div>
+            <p className="score-label">Mars Compliance</p>
+            <h3>
+              {tutorialTitleId ? (
+                <FormattedMessage id={tutorialTitleId} defaultMessage={title} />
+              ) : (
+                title
+              )}
+            </h3>
+          </div>
+          <button type="button" className="close-btn" aria-label="Chiudi tutorial" onClick={onClose}>
+            ×
+          </button>
         </div>
-        
-        <div className="video-player">
-          {/* Placeholder per video reale - in produzione sostituire con <video> tag */}
-          <div className="video-placeholder">
-            {!isPlaying ? (
-              <div className="play-button" onClick={handlePlay}>
-                <span className="play-icon">▶</span>
-                <span className="play-text">
-                  <FormattedMessage id="video.play" defaultMessage="Riproduci Video" />
-                </span>
-              </div>
-            ) : (
-              <div className="video-content">
-                <div className="simulated-video">
-                  <div className="video-animation">
-                    📹 <FormattedMessage id="video.playing" defaultMessage="Video in riproduzione..." />
+
+        <div className="tutorial-panel-body">
+          <div className="video-player">
+            <div className="video-placeholder">
+              {!isPlaying ? (
+                <button type="button" className="start-btn play-button" onClick={handlePlay}>
+                  <span className="play-icon" aria-hidden="true">▶</span>
+                  <span className="play-text">
+                    <FormattedMessage id="video.play" defaultMessage="Riproduci video" />
+                  </span>
+                </button>
+              ) : (
+                <div className="video-content">
+                  <div className="simulated-video">
+                    <div className="video-animation">
+                      📹 <FormattedMessage id="video.playing" defaultMessage="Video in riproduzione..." />
+                    </div>
+                    <div className="progress-bar" aria-hidden="true">
+                      <div className="progress-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                    <span className="progress-text">{progress}%</span>
                   </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${progress}%` }} />
-                  </div>
-                  <span className="progress-text">{progress}%</span>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+
+          <div className="video-info component-info-card">
+            <h3>
+              <FormattedMessage id="tutorial.menu.title" defaultMessage="Video tutorial" />
+            </h3>
+            <p className="video-description">
+              <FormattedMessage
+                id={videoInfo?.description || 'video.generic.desc'}
+                defaultMessage="Tutorial video per apprendere le procedure corrette."
+              />
+            </p>
+            <div className="video-meta">
+              <span className="duration">⏱ {videoInfo?.duration || '2:00'}</span>
+              {progress === 100 && (
+                <span className="completed-badge">
+                  <FormattedMessage id="video.completed" defaultMessage="Completato" />
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="video-info">
-          <p className="video-description">
-            <FormattedMessage 
-              id={videoInfo?.description || 'video.generic.desc'} 
-              defaultMessage="Tutorial video per apprendere le procedure corrette." 
-            />
-          </p>
-          <div className="video-meta">
-            <span className="duration">⏱ {videoInfo?.duration || '2:00'}</span>
-            {progress === 100 && (
-              <span className="completed-badge">
-                <FormattedMessage id="video.completed" defaultMessage="✓ Completato" />
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="video-actions">
-          <button className="btn-skip" onClick={onClose}>
+        <div className="video-actions tutorial-panel-footer">
+          <button type="button" className="btn-secondary btn-skip" onClick={onClose}>
             <FormattedMessage id="video.skip" defaultMessage="Salta" />
           </button>
           {progress === 100 ? (
-            <button className="btn-continue" onClick={onClose}>
+            <button type="button" className="start-btn btn-continue" onClick={onClose}>
               <FormattedMessage id="video.continue" defaultMessage="Continua" />
             </button>
           ) : (
-            <button className="btn-watch" onClick={handlePlay} disabled={isPlaying}>
+            <button type="button" className="start-btn btn-watch" onClick={handlePlay} disabled={isPlaying}>
               <FormattedMessage id="video.watch" defaultMessage="Guarda" />
             </button>
           )}
@@ -126,43 +161,45 @@ export default function VideoTutorial({ videoId, title, onClose, onComplete }: V
 // Tutorial Menu Component
 export function TutorialMenu({ onSelect, onClose }: { onSelect: (id: string) => void; onClose: () => void }) {
   const tutorials = [
-    { id: 'inspection', icon: '🔍', color: 'var(--mars-yellow)' },
-    { id: 'lifting', icon: '💪', color: '#FF9800' },
-    { id: 'assembly', icon: '#2196F3', color: '#2196F3' }, // Fix redundant color reference or use industrial palette
-    { id: 'dpi', icon: '🦺', color: 'var(--mars-yellow)' },
-  ];
+    { id: 'inspection', icon: '🔍' },
+    { id: 'lifting', icon: '💪' },
+    { id: 'assembly', icon: '🛠️' },
+    { id: 'dpi', icon: '🦺' },
+  ] as const;
 
   return (
-    <div className="video-tutorial-overlay">
-      <div className="tutorial-menu-container" style={{ borderRadius: 0, border: '4px solid var(--mars-yellow)' }}>
-        <div className="video-header">
-          <h3 style={{ color: 'var(--mars-yellow)', fontWeight: 900 }}>
-            <FormattedMessage id="tutorial.menu.title" defaultMessage="VIDEO TUTORIAL" />
+    <div className="video-tutorial-overlay tutorial-overlay">
+      <div className="tutorial-menu-container tutorial-panel">
+        <div className="video-header tutorial-panel-header">
+          <h3>
+            <FormattedMessage id="tutorial.menu.title" defaultMessage="Video tutorial" />
           </h3>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button type="button" className="close-btn" aria-label="Chiudi menu tutorial" onClick={onClose}>
+            ×
+          </button>
         </div>
 
-        <div className="tutorial-grid">
-          {tutorials.map(tutorial => (
-            <div 
+        <div className="tutorial-grid tutorial-panel-body">
+          {tutorials.map((tutorial) => (
+            <button
               key={tutorial.id}
-              className="tutorial-card"
-              style={{ borderColor: 'var(--mars-iron)', borderRadius: 0 }}
+              type="button"
+              className="tutorial-card component-info-card"
               onClick={() => onSelect(tutorial.id)}
             >
-              <span className="tutorial-icon" style={{ background: 'var(--mars-steel)', borderRadius: 0 }}>
+              <span className="tutorial-icon" aria-hidden="true">
                 {tutorial.icon}
               </span>
               <div className="tutorial-info">
-                <h4 style={{ textTransform: 'uppercase', fontWeight: 700 }}>
+                <h4>
                   <FormattedMessage id={`tutorial.${tutorial.id}.title`} defaultMessage={tutorial.id} />
                 </h4>
-                <p style={{ fontSize: '0.7rem' }}>
-                  <FormattedMessage id={`tutorial.${tutorial.id}.desc`} defaultMessage="PROCEDURA OPERATIVA" />
+                <p>
+                  <FormattedMessage id={`tutorial.${tutorial.id}.desc`} defaultMessage="Procedura operativa" />
                 </p>
               </div>
-              <span className="play-btn-small" style={{ borderRadius: 0, background: 'var(--mars-yellow)' }}>▶</span>
-            </div>
+              <span className="play-btn-small" aria-hidden="true">▶</span>
+            </button>
           ))}
         </div>
       </div>

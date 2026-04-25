@@ -1,17 +1,22 @@
-/* Global styles - fullscreen game layout */
+/* Global styles — Mars Compliance Theme */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
 
 body {
-  background: #1a1a1a;
-  font-family: 'Space Grotesk', sans-serif;
+  background: #f5f2ed;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #0a0a0a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

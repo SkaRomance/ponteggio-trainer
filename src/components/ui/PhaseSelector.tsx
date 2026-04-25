@@ -13,25 +13,32 @@ const phases: { id: GamePhase; label: string; icon: string }[] = [
 ];
 
 export default function PhaseSelector() {
-  const { currentPhase, unlockedPhases, setPhase } = useGameStore();
+  const { currentPhase, unlockedPhases, completedPhases, setPhase } = useGameStore();
 
   return (
-    <div className="phase-selector">
+    <div className="phase-selector" role="tablist" aria-label="Fasi del percorso">
       {phases.map((phase, index) => {
         const isUnlocked = unlockedPhases.includes(phase.id);
         const isActive = currentPhase === phase.id;
-        const isCompleted = false; // TODO: track completed phases
+        const isCompleted = completedPhases.includes(phase.id);
 
         return (
           <button
+            type="button"
             key={phase.id}
+            role="tab"
+            aria-selected={isActive}
+            aria-current={isActive ? 'step' : undefined}
             className={`phase-btn ${isActive ? 'active' : ''} ${isUnlocked ? 'unlocked' : 'locked'}`}
             onClick={() => isUnlocked && setPhase(phase.id)}
             disabled={!isUnlocked}
           >
-            <span className="phase-icon">{phase.icon}</span>
             <span className="phase-number">{index + 1}</span>
-            <FormattedMessage id={phase.label} defaultMessage={phase.id} />
+            <span className="phase-icon" aria-hidden="true">{phase.icon}</span>
+            <span className="phase-label">
+              <FormattedMessage id={phase.label} defaultMessage={phase.id} />
+            </span>
+            {!isUnlocked && <span className="phase-status">Premium</span>}
             {isCompleted && <span className="phase-check">✓</span>}
           </button>
         );

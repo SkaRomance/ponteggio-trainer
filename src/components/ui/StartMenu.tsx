@@ -6,17 +6,17 @@ export default function StartMenu() {
   const { startGame, accessLevel, isPhaseLocked, setAccessLevel } = useGameStore();
 
   const phases: { id: GamePhase; label: string; icon: string }[] = [
-    { id: 'warehouse', label: 'AREA ISPEZIONE', icon: '🔍' },
-    { id: 'transport', label: 'LOGISTICA TRASPORTO', icon: '🚚' },
-    { id: 'storage', label: 'STOCCAGGIO CANTIERE', icon: '🏗️' },
-    { id: 'assembly', label: 'MONTAGGIO Pi.M.U.S.', icon: '🛠️' },
-    { id: 'use', label: 'ISPEZIONE D\'USO', icon: '👷' },
-    { id: 'disassembly', label: 'SMONTAGGIO SICURO', icon: '🧱' },
-    { id: 'return', label: 'REPORT FINALE', icon: '📊' },
+    { id: 'warehouse', label: 'Ispezione iniziale', icon: '🔍' },
+    { id: 'transport', label: 'Trasporto', icon: '🚚' },
+    { id: 'storage', label: 'Stoccaggio in cantiere', icon: '🏗️' },
+    { id: 'assembly', label: 'Montaggio Pi.M.U.S.', icon: '🛠️' },
+    { id: 'use', label: 'Controllo in uso', icon: '👷' },
+    { id: 'disassembly', label: 'Smontaggio sicuro', icon: '🧱' },
+    { id: 'return', label: 'Report finale', icon: '📊' },
   ];
 
   const handlePurchase = () => {
-    const confirmPurchase = window.confirm("ATTIVARE LICENZA PREMIUM PER ACCEDERE A TUTTI GLI STAGE?");
+    const confirmPurchase = window.confirm('Attivare la licenza premium per accedere a tutte le fasi?');
     if (confirmPurchase) {
       setAccessLevel('premium');
     }
@@ -24,71 +24,86 @@ export default function StartMenu() {
 
   return (
     <div className="start-menu">
-      <div className="menu-content" style={{ border: '12px solid var(--mars-yellow)', background: 'black', padding: 'clamp(2rem, 5vw, 5rem)', position: 'relative' }}>
-        
-        {/* Badge Versione */}
-        <div style={{ position: 'absolute', top: '-25px', left: '50px', background: 'var(--mars-yellow)', color: 'black', padding: '5px 20px', fontWeight: 900, fontSize: '1.2rem' }}>
-          VER. 2.0.4 PROFESSIONAL
+      <div className="menu-content">
+        <div className="menu-header-row">
+          <img className="mars-logo" src="/logo-mars.png" alt="Mars Compliance" />
+          <div className="menu-badge">
+            Mars Compliance trainer
+          </div>
         </div>
 
-        <h1 className="menu-title" style={{ fontSize: 'clamp(3rem, 12vw, 7rem)', lineHeight: '0.8', marginBottom: '1.5rem', textAlign: 'left' }}>
-          MARS-SAFE<br/>
-          <span style={{ WebkitTextStroke: '2px var(--mars-yellow)', color: 'transparent' }}>TRAINER</span>
+        <h1 className="menu-title">
+          Ponteggio <span className="menu-title-accent">Trainer</span>
         </h1>
-        
-        <p className="menu-subtitle" style={{ color: 'var(--mars-yellow)', fontWeight: '900', marginBottom: '3rem', fontSize: '1.5rem', textAlign: 'left', borderBottom: '4px solid var(--mars-yellow)', display: 'inline-block', paddingBottom: '0.5rem' }}>
-          SIMULATORE ADDESTRAMENTO PONTEGGI / D.LGS 81/08
+
+        <p className="menu-subtitle">
+          Simulatore Mars Compliance per la verifica dei componenti, la logistica di cantiere e le procedure di montaggio in sicurezza.
         </p>
-        
-        <div className="phases-grid" style={{ marginBottom: '4rem', gap: '1rem' }}>
+
+        <div className="menu-stats" aria-label="Panoramica del corso">
+          <div>
+            <div className="menu-stat-value">{phases.length}</div>
+            <div className="menu-stat-label">Fasi operative</div>
+          </div>
+          <div>
+            <div className="menu-stat-value">{accessLevel === 'free' ? 'Demo' : 'Premium'}</div>
+            <div className="menu-stat-label">Accesso attivo</div>
+          </div>
+          <div>
+            <div className="menu-stat-value">81/08</div>
+            <div className="menu-stat-label">Riferimento normativo</div>
+          </div>
+        </div>
+
+        <ul className="phases-grid" aria-label="Fasi del percorso">
           {phases.map((phase) => {
             const locked = isPhaseLocked(phase.id);
             return (
-              <div 
+              <li
                 key={phase.id} 
                 className="phase-item"
-                style={{ 
-                  background: locked ? 'rgba(255,255,255,0.02)' : 'rgba(255,204,0,0.1)',
-                  border: locked ? '1px solid #222' : '2px solid var(--mars-yellow)',
-                  opacity: locked ? 0.4 : 1,
-                  padding: '1.5rem'
-                }}
+                aria-disabled={locked}
+                data-state={locked ? 'locked' : 'available'}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '1.5rem' }}>{phase.icon}</span>
-                  <span style={{ fontWeight: '900', color: locked ? '#666' : 'white' }}>{phase.label}</span>
+                <div className="phase-item-copy">
+                  <span className="phase-item-icon" aria-hidden="true">{phase.icon}</span>
+                  <div>
+                    <span className="phase-item-title">{phase.label}</span>
+                    <span className="phase-item-status">
+                      {locked ? 'Disponibile con licenza premium' : 'Inclusa nel percorso attivo'}
+                    </span>
+                  </div>
                 </div>
-                {locked && <Lock size={18} color="#444" />}
-              </div>
+                {locked ? <Lock size={18} aria-hidden="true" /> : <span className="phase-check" aria-hidden="true">✓</span>}
+              </li>
             );
           })}
-        </div>
+        </ul>
 
-        <div className="buttons-container" style={{ justifyContent: 'flex-start', gap: '2rem' }}>
+        <div className="buttons-container">
           <button 
+            type="button"
             className="start-btn" 
             onClick={startGame}
-            style={{ padding: '2rem 5rem', fontSize: '2rem', boxShadow: '15px 15px 0px rgba(255,204,0,0.2)' }}
           >
-            {accessLevel === 'free' ? 'AVVIA DEMO' : 'AVVIA SIMULAZIONE'}
+            {accessLevel === 'free' ? 'Avvia la demo' : 'Avvia la simulazione'}
           </button>
 
           {accessLevel === 'free' && (
             <button 
-              className="purchase-btn"
+              type="button"
+              className="btn-secondary"
               onClick={handlePurchase}
-              style={{ border: '4px solid white', fontSize: '1.5rem', padding: '1.5rem 3rem' }}
             >
-              <ShoppingCart size={30} style={{ marginRight: '1rem' }} />
-              SBLOCCA TUTTI GLI STAGE
+              <ShoppingCart size={18} aria-hidden="true" />
+              Sblocca tutte le fasi
             </button>
           )}
         </div>
 
-        <div style={{ marginTop: '4rem', color: '#444', fontSize: '0.8rem', textAlign: 'left' }}>
-          SISTEMA DI VERIFICA COMPLIANCE CERTIFICATO DA MARS COMPLIANCE S.R.L. <br/>
-          TUTTI I DIRITTI RISERVATI © 2026
-        </div>
+        <p className="menu-legal">
+          Sistema di verifica compliance certificato da Mars Compliance S.r.l. Tutti i diritti riservati © 2026.
+        </p>
       </div>
     </div>
   );
