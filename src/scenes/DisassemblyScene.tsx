@@ -6,10 +6,11 @@ import Avatar3D from '../components/game/Avatar3D';
 
 const MARS_PRIMARY = '#1a472a';
 const MARS_ACCENT = '#2d6a4f';
+const MARS_SUCCESS = '#16A34A';
+const MARS_DANGER = '#DC2626';
 const MARS_TEXT = '#0a0a0a';
 const MARS_MUTED = '#555555';
 const MARS_BORDER = '#d1cdc7';
-const MARS_FONT = 'Inter';
 
 const panelShellStyle: CSSProperties = {
   width: 'min(400px, 90vw)',
@@ -30,8 +31,34 @@ const panelCardStyle: CSSProperties = {
   boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
 };
 
+const getToggleButtonStyle = (active: boolean, disabled = false): CSSProperties => ({
+  width: '100%',
+  padding: '0.95rem 1rem',
+  borderRadius: '999px',
+  border: `1px solid ${active ? MARS_PRIMARY : MARS_BORDER}`,
+  background: active ? MARS_PRIMARY : '#f9f7f4',
+  color: active ? '#ffffff' : MARS_PRIMARY,
+  fontFamily: 'Inter, sans-serif',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.5 : 1,
+  boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+});
+
 export default function DisassemblyScene() {
-  const { addScore, addError, nextPhase, unlockPhase, isHooked, assembledItems, pushNotice } = useGameStore();
+  const {
+    addScore,
+    addError,
+    nextPhase,
+    unlockPhase,
+    isHarnessed,
+    setHarnessed,
+    isHooked,
+    setHooked,
+    assembledItems,
+    pushNotice,
+  } = useGameStore();
   const [removedItems, setRemovedItems] = useState<string[]>([]);
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
 
@@ -109,7 +136,7 @@ export default function DisassemblyScene() {
             <Box args={[1.5, 1.5, 1.5]}>
               <meshStandardMaterial color="#ffcc00" metalness={0.8} />
             </Box>
-            <Text position={[0, 1, 0]} fontSize={0.15} color={MARS_ACCENT} font={MARS_FONT}>CLICCA PER SMONTARE</Text>
+            <Text position={[0, 1, 0]} fontSize={0.15} color={MARS_ACCENT}>CLICCA PER SMONTARE</Text>
           </group>
         );
       })}
@@ -139,6 +166,24 @@ export default function DisassemblyScene() {
             <p style={{ fontSize: '0.95rem', color: MARS_MUTED, margin: '0 0 1.25rem 0', lineHeight: 1.55 }}>
               Esegui la procedura inversa rispettando gli ancoraggi in quota e mantenendo la rimozione dall&apos;alto verso il basso.
             </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1rem' }}>
+              <button onClick={() => setHarnessed(!isHarnessed)} style={getToggleButtonStyle(isHarnessed)}>
+                {isHarnessed ? 'IMBRACATURA ATTIVA' : 'INDOSSA IMBRACATURA'}
+              </button>
+              <button onClick={() => setHooked(!isHooked)} disabled={!isHarnessed} style={getToggleButtonStyle(isHooked, !isHarnessed)}>
+                {isHooked ? 'CORDINO ANCORATO' : 'ANCORA CORDINO'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1, padding: '0.85rem 1rem', borderRadius: '18px', background: '#f9f7f4', border: `1px solid ${MARS_BORDER}` }}>
+                <span style={{ display: 'block', color: MARS_MUTED, fontSize: '0.74rem', marginBottom: '0.3rem' }}>Imbracatura</span>
+                <strong style={{ color: isHarnessed ? MARS_SUCCESS : MARS_MUTED }}>{isHarnessed ? 'Attiva' : 'Assente'}</strong>
+              </div>
+              <div style={{ flex: 1, padding: '0.85rem 1rem', borderRadius: '18px', background: '#f9f7f4', border: `1px solid ${MARS_BORDER}` }}>
+                <span style={{ display: 'block', color: MARS_MUTED, fontSize: '0.74rem', marginBottom: '0.3rem' }}>Ancoraggio</span>
+                <strong style={{ color: isHooked ? MARS_SUCCESS : MARS_DANGER }}>{isHooked ? 'Confermato' : 'Mancante'}</strong>
+              </div>
+            </div>
             <div style={{ padding: '1rem 1.1rem', borderRadius: '18px', background: '#f5f2ed', border: `1px solid ${MARS_BORDER}` }}>
               <span style={{ display: 'block', marginBottom: '0.35rem', color: MARS_MUTED, fontSize: '0.78rem', letterSpacing: '0.08em' }}>
                 Elementi rimanenti
@@ -147,6 +192,11 @@ export default function DisassemblyScene() {
                 {assembledItems.length - removedItems.length}
               </strong>
             </div>
+            {avatarPosition.y > 1.8 && !isHooked && (
+              <div style={{ marginTop: '1rem', padding: '0.95rem 1rem', borderRadius: '18px', border: `1px solid ${MARS_DANGER}`, background: 'rgba(220, 38, 38, 0.08)', color: MARS_DANGER, fontWeight: 700, textAlign: 'center' }}>
+                Pericolo caduta: smontaggio in quota senza ancoraggio
+              </div>
+            )}
           </div>
         </div>
       </Html>

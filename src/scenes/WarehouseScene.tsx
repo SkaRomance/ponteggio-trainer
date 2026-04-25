@@ -9,7 +9,6 @@ const MARS_PRIMARY = '#1a472a';
 const MARS_ACCENT = '#2d6a4f';
 const MARS_SUCCESS = '#16A34A';
 const MARS_MUTED = '#555555';
-const MARS_FONT = 'Inter';
 
 interface ScaffoldingComponentProps {
   position: Vector3;
@@ -69,7 +68,7 @@ function WarehouseComponent({ position, onClick, isSelected, isInspected, isNear
         </mesh>
 
         {isInspected && (
-          <Text position={[0, 1.2, 0]} fontSize={0.2} color={MARS_SUCCESS} font={MARS_FONT}>✓ OK</Text>
+          <Text position={[0, 1.2, 0]} fontSize={0.2} color={MARS_SUCCESS}>✓ OK</Text>
         )}
 
         {isNearby && !isInspected && (
@@ -77,7 +76,7 @@ function WarehouseComponent({ position, onClick, isSelected, isInspected, isNear
             <Box args={[0.4, 0.2, 0.01]}>
               <meshBasicMaterial color="black" />
             </Box>
-            <Text position={[0, 0, 0.02]} fontSize={0.15} color={MARS_ACCENT} font={MARS_FONT}>[E] ISPEZIONA</Text>
+            <Text position={[0, 0, 0.02]} fontSize={0.15} color={MARS_ACCENT}>[E] ISPEZIONA</Text>
           </group>
         )}
       </Float>
@@ -258,10 +257,10 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
 
       {/* UI Spaziale */}
       <Center top position={[0, 6, -15]}>
-        <Text fontSize={0.8} color={MARS_PRIMARY} font={MARS_FONT} anchorX="center">
+        <Text fontSize={0.8} color={MARS_PRIMARY} anchorX="center">
           LOGISTICA E ISPEZIONE
         </Text>
-        <Text position={[0, -0.8, 0]} fontSize={0.3} color={MARS_MUTED} font={MARS_FONT}>
+        <Text position={[0, -0.8, 0]} fontSize={0.3} color={MARS_MUTED}>
           AREA VERIFICA COMPONENTI D.LGS 81/08
         </Text>
       </Center>

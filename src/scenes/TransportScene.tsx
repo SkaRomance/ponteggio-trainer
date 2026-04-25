@@ -12,7 +12,6 @@ const MARS_DANGER = '#DC2626';
 const MARS_TEXT = '#0a0a0a';
 const MARS_MUTED = '#555555';
 const MARS_BORDER = '#d1cdc7';
-const MARS_FONT = 'Inter';
 
 const panelShellStyle: CSSProperties = {
   width: 'min(420px, 90vw)',
@@ -63,7 +62,7 @@ function LoadableItem({ id, type, position, onLoad, isSelected }: {
           />
         </Box>
       </Float>
-      <Text position={[0, 0.5, 0]} fontSize={0.15} color={MARS_ACCENT} font={MARS_FONT}>
+      <Text position={[0, 0.5, 0]} fontSize={0.15} color={MARS_ACCENT}>
         {type.toUpperCase()}
       </Text>
     </group>
@@ -72,8 +71,12 @@ function LoadableItem({ id, type, position, onLoad, isSelected }: {
 
 export default function TransportScene() {
   const {
-    loadedItems,
     setLoadedItems,
+    transportGroundItems,
+    setTransportGroundItems,
+    transportTruckItems,
+    setTransportTruckItems,
+    clearStorageLocations,
     nextPhase,
     unlockPhase,
     addError,
@@ -84,10 +87,13 @@ export default function TransportScene() {
     weightBalance,
     setWeightBalance,
   } = useGameStore();
-  const [itemsOnGround, setItemsOnGround] = useState<string[]>(() => loadedItems);
-  const [itemsOnTruck, setItemsOnTruck] = useState<{id: string, pos: Vector3}[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 10));
+
+  const itemsOnTruck = useMemo(
+    () => transportTruckItems.map((item) => ({ id: item.id, pos: new Vector3(item.x, item.y, item.z) })),
+    [transportTruckItems],
+  );
 
   const balanceLabel = useMemo(() => {
     if (itemsOnTruck.length === 0) return 'In attesa di carico';
@@ -95,12 +101,6 @@ export default function TransportScene() {
     if (Math.abs(weightBalance) <= 0.3) return 'Bilanciamento da rifinire';
     return 'Bilanciamento critico';
   }, [itemsOnTruck.length, weightBalance]);
-
-  useEffect(() => {
-    setLoadedItems([]); 
-    setStrapped(false);
-    setWeightBalance(0);
-  }, [setLoadedItems, setStrapped, setWeightBalance]);
 
   useEffect(() => {
     if (itemsOnTruck.length === 0) {
@@ -123,9 +123,9 @@ export default function TransportScene() {
     const point = e.point;
     // Area cassone
     if (point.z < -2 && point.z > -12 && Math.abs(point.x) < 4) {
-      const newItem = { id: selectedItemId, pos: new Vector3(point.x, 1.2, point.z) };
-      setItemsOnTruck(prev => [...prev, newItem]);
-      setItemsOnGround(prev => prev.filter(item => item !== selectedItemId));
+      const newItem = { id: selectedItemId, x: point.x, y: 1.2, z: point.z };
+      setTransportTruckItems([...transportTruckItems, newItem]);
+      setTransportGroundItems(transportGroundItems.filter((item) => item !== selectedItemId));
       setSelectedItemId(null);
       setStrapped(false);
       addScore(25);
@@ -139,7 +139,7 @@ export default function TransportScene() {
   };
 
   const handleFinishPhase = () => {
-    if (itemsOnGround.length > 0) {
+    if (transportGroundItems.length > 0) {
       addError({
         code: 'ITEMS_LEFT_BEHIND',
         severity: 'medium',
@@ -187,7 +187,8 @@ export default function TransportScene() {
       return;
     }
 
-    setLoadedItems(itemsOnTruck.map(i => i.id));
+    clearStorageLocations();
+    setLoadedItems(transportTruckItems.map((item) => item.id));
     pushNotice({
       severity: 'success',
       title: 'Trasporto validato',
@@ -224,7 +225,7 @@ export default function TransportScene() {
 
       {/* Oggetti a terra */}
       <group position={[-8, 0.5, 2]}>
-        {itemsOnGround.map((id, index) => {
+        {transportGroundItems.map((id, index) => {
           const type = id.split('-')[0];
           return (
             <LoadableItem 
@@ -250,8 +251,8 @@ export default function TransportScene() {
 
       {/* HUD Spaziale */}
       <Center top position={[0, 8, -10]}>
-        <Text fontSize={0.6} color={MARS_PRIMARY} font={MARS_FONT}>LOGISTICA TRASPORTO</Text>
-        <Text position={[0, -0.8, 0]} fontSize={0.25} color={MARS_ACCENT} font={MARS_FONT}>CARICA TUTTI I PEZZI E BILANCIA IL PESO</Text>
+        <Text fontSize={0.6} color={MARS_PRIMARY}>LOGISTICA TRASPORTO</Text>
+        <Text position={[0, -0.8, 0]} fontSize={0.25} color={MARS_ACCENT}>CARICA TUTTI I PEZZI E BILANCIA IL PESO</Text>
       </Center>
 
       <Html position={[-12, 10, 0]}>
@@ -273,7 +274,7 @@ export default function TransportScene() {
               </div>
               <div style={{ padding: '0.9rem 1rem', borderRadius: '18px', background: '#f5f2ed', border: `1px solid ${MARS_BORDER}` }}>
                 <span style={{ display: 'block', color: MARS_MUTED, fontSize: '0.75rem', marginBottom: '0.25rem' }}>Pezzi a terra</span>
-                <strong style={{ color: itemsOnGround.length === 0 ? MARS_SUCCESS : MARS_DANGER, fontSize: '1.35rem' }}>{itemsOnGround.length}</strong>
+                <strong style={{ color: transportGroundItems.length === 0 ? MARS_SUCCESS : MARS_DANGER, fontSize: '1.35rem' }}>{transportGroundItems.length}</strong>
               </div>
             </div>
 
@@ -327,9 +328,9 @@ export default function TransportScene() {
       {/* Pulsante Azione */}
       <group position={[8, 1, 0]} onClick={handleFinishPhase}>
         <Box args={[3, 1.2, 0.2]} castShadow>
-          <meshStandardMaterial color={itemsOnGround.length === 0 ? "#ffcc00" : "#222"} />
+          <meshStandardMaterial color={transportGroundItems.length === 0 ? "#ffcc00" : "#222"} />
         </Box>
-        <Text position={[0, 0, 0.15]} fontSize={0.2} color={itemsOnGround.length === 0 ? '#0a0a0a' : '#f5f2ed'} font={MARS_FONT} fontWeight={900}>
+        <Text position={[0, 0, 0.15]} fontSize={0.2} color={transportGroundItems.length === 0 ? '#0a0a0a' : '#f5f2ed'} fontWeight={900}>
           PARTENZA MEZZO
         </Text>
       </group>

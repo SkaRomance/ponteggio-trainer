@@ -13,7 +13,16 @@ Original prompt: `C:\Users\Salvatore Romano\Desktop\Personale\PROGETTI\ponteggio
 - Chiusa la regola di gameplay mancante nel trasporto: ora la partenza richiede carico completo, bilanciato e fissato.
 - Rimosso l'uso dei `alert()` nelle scene principali, sostituiti da notifiche coerenti con il flusso Mars.
 - Verifica finale completata: `npm run build` e `npx eslint src --ext .ts,.tsx` passano.
+- Esteso l'audit con `phaseScores` reali per fase e report finale con esito, delta salute, crediti e rilievi principali.
+- Rafforzato lo stoccaggio: supporti distanziati, blocco della danger zone, persistenza `storageLocations` e chiusura fase solo a scarico conforme.
+- Portati i controlli DPI/ancoraggio anche nelle fasi `use` e `disassembly` per continuita operativa reale.
+- Resi contestuali i testi dei controlli, limitato il selettore lingua alle localizzazioni coperte e ammorbidito il copy legale del menu.
+- Eliminati gli errori console emersi nello smoke test: chiavi `react-intl` mancanti e uso improprio di `font=\"Inter\"` nei `Text` Drei.
+- Reso canonico lo stato logistico tra `transport` e `storage` con `transportGroundItems` / `transportTruckItems` nello store.
+- Bloccata la navigazione manuale delle fasi durante una run attiva per preservare coerenza di audit e scoring.
+- Esteso il perimetro demo fino alla fase `transport`, lasciando bloccate le fasi successive.
+- Smoke test eseguito con il client Playwright del workflow `develop-web-game`: nessun file `errors-0.json` generato dopo l'ultimo passaggio.
 
 TODO
-- Verificare in browser il comportamento finale su viewport desktop/mobile e l'impatto del font `Inter` su tutti i `Text` Drei.
-- Valutare in un commit successivo la rimozione o attivazione delle parti legacy ancora non usate (`phaseScores`, `storageLocations`, parte del lifting avatar).
+- Fare una verifica visuale manuale in browser desktop/mobile: lo smoke headless e pulito lato console ma non e affidabile come controllo della resa 3D centrale.
+- Valutare in un commit successivo il code-splitting Vite: il bundle JS supera ancora il warning dei 500 kB.

@@ -102,7 +102,7 @@ export default function StartMenu() {
         </div>
 
         <p className="menu-legal">
-          Sistema di verifica compliance certificato da Mars Compliance S.r.l. Tutti i diritti riservati © 2026.
+          Piattaforma dimostrativa Mars Compliance S.r.l. Tutti i diritti riservati © 2026.
         </p>
       </div>
     </div>

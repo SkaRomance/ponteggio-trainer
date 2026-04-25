@@ -9,6 +9,7 @@ export const locales: Record<Locale, { name: string; dir: 'ltr' | 'rtl' }> = {
 };
 
 export const defaultLocale: Locale = 'it';
+export const selectableLocales: Locale[] = ['it'];
 
 // Helper functions for RTL and fonts
 export const getDirection = (locale: string): 'ltr' | 'rtl' => 
@@ -91,6 +92,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'game.completed.title': 'Corso Completato!',
     'game.completed.message': 'Hai completato tutte le fasi del corso di sicurezza.',
     'game.restart': 'Ricomincia',
+    'controls.title': 'Controlli',
+    'controls.forward': 'Avanti',
+    'controls.backward': 'Indietro',
+    'controls.left': 'Sinistra',
+    'controls.right': 'Destra',
     'controls.e': 'Interagisci',
   },
   en: {
@@ -131,6 +137,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'game.completed.title': 'Course Completed!',
     'game.completed.message': 'You have completed all safety course phases.',
     'game.restart': 'Restart',
+    'controls.title': 'Controls',
+    'controls.forward': 'Forward',
+    'controls.backward': 'Back',
+    'controls.left': 'Left',
+    'controls.right': 'Right',
     'controls.e': 'Interact',
   },
   es: {
@@ -171,6 +182,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'game.completed.title': '¡Curso Completado!',
     'game.completed.message': 'Has completado todas las fases del curso de seguridad.',
     'game.restart': 'Reiniciar',
+    'controls.title': 'Controles',
+    'controls.forward': 'Adelante',
+    'controls.backward': 'Atrás',
+    'controls.left': 'Izquierda',
+    'controls.right': 'Derecha',
     'controls.e': 'Interactuar',
   },
   fr: {
@@ -211,6 +227,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'game.completed.title': 'Cours Terminé!',
     'game.completed.message': 'Vous avez terminé toutes les phases du cours de sécurité.',
     'game.restart': 'Recommencer',
+    'controls.title': 'Contrôles',
+    'controls.forward': 'Avancer',
+    'controls.backward': 'Reculer',
+    'controls.left': 'Gauche',
+    'controls.right': 'Droite',
     'controls.e': 'Interagir',
   },
   ar: {
@@ -251,6 +272,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'game.completed.title': '!اكتملت الدورة',
     'game.completed.message': 'لقد أكملت جميع مراحل دورة السلامة.',
     'game.restart': 'إعادة البدء',
+    'controls.title': 'عناصر التحكم',
+    'controls.forward': 'تقدم',
+    'controls.backward': 'رجوع',
+    'controls.left': 'يسار',
+    'controls.right': 'يمين',
     'controls.e': 'تفاعل',
   },
 };

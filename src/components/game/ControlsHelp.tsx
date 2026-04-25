@@ -1,6 +1,28 @@
+import { useGameStore } from '../../stores/gameStore';
 import { FormattedMessage } from 'react-intl';
 
 export default function ControlsHelp() {
+  const { currentPhase } = useGameStore();
+  const primaryAction =
+    currentPhase === 'warehouse'
+      ? { key: 'E', label: "Ispeziona" }
+      : { key: 'Mouse', label: 'Seleziona / Conferma' };
+
+  const phaseTip =
+    currentPhase === 'warehouse'
+      ? "Avvicinati ai componenti e premi E per avviare l'ispezione."
+      : currentPhase === 'transport'
+        ? 'Seleziona un componente, clicca nel cassone e conferma il fissaggio prima della partenza.'
+        : currentPhase === 'storage'
+          ? 'Posiziona i ceppi a terra, evita la zona pericolo e scarica ogni pezzo sui supporti.'
+          : currentPhase === 'assembly'
+            ? 'Segui l’ordine Pi.M.U.S. e attiva imbracatura e cordino prima di lavorare in quota.'
+            : currentPhase === 'use'
+              ? 'Ispeziona le anomalie cliccando sui marker e mantieni l’ancoraggio quando operi in quota.'
+              : currentPhase === 'disassembly'
+                ? 'Smonta dall’alto verso il basso e mantieni il cordino ancorato durante la rimozione.'
+                : 'Consulta il report finale e chiudi l’addestramento.';
+
   return (
     <div className="controls-help">
       <h4>
@@ -24,15 +46,12 @@ export default function ControlsHelp() {
           <span><FormattedMessage id="controls.right" defaultMessage="Destra" /></span>
         </li>
         <li className="control-item">
-          <kbd>E</kbd>
-          <span><FormattedMessage id="controls.e" defaultMessage="Interagisci" /></span>
+          <kbd>{primaryAction.key}</kbd>
+          <span>{primaryAction.label}</span>
         </li>
       </ul>
       <p className="controls-tip">
-        <FormattedMessage
-          id="controls.tip"
-          defaultMessage="Avvicinati ai componenti e premi E per avviare l'ispezione."
-        />
+        {phaseTip}
       </p>
     </div>
   );

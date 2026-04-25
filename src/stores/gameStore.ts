@@ -28,9 +28,17 @@ export interface PhaseScore {
   phase: GamePhase;
   startHealth: number;
   endHealth: number;
+  startScore: number;
+  endScore: number;
   errors: GameError[];
   completed: boolean;
   bonusPoints: number;
+}
+
+interface PhaseAuditStart {
+  phase: GamePhase;
+  health: number;
+  score: number;
 }
 
 export interface GameNotice {
@@ -99,8 +107,13 @@ export interface GameState {
   // Storage & Logistics State
   loadedItems: string[];
   setLoadedItems: (items: string[]) => void;
+  transportGroundItems: string[];
+  setTransportGroundItems: (items: string[]) => void;
+  transportTruckItems: Array<{ id: string; x: number; y: number; z: number }>;
+  setTransportTruckItems: (items: Array<{ id: string; x: number; y: number; z: number }>) => void;
   storageLocations: Record<string, { x: number; y: number; z: number }>;
   setStorageLocation: (itemId: string, pos: { x: number; y: number; z: number }) => void;
+  clearStorageLocations: () => void;
   
   // Transport Specific
   isStrapped: boolean;
@@ -117,9 +130,13 @@ export interface GameState {
   addAssembledItem: (id: string) => void;
   lastAssemblyStep: number;
   setLastAssemblyStep: (step: number) => void;
+
+  // Internal Audit State
+  phaseAuditStart: PhaseAuditStart | null;
+  beginPhaseAudit: (phase: GamePhase) => void;
 }
 
-const phaseOrder: GamePhase[] = [
+export const phaseOrder: GamePhase[] = [
   'warehouse',
   'transport',
   'storage',
@@ -136,6 +153,8 @@ const severityPenalty: Record<ErrorSeverity, number> = {
   low: 5,
 };
 
+const isAuditablePhase = (phase: GamePhase) => phase !== 'menu' && phase !== 'completed';
+
 export const useGameStore = create<GameState>((set, get) => {
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
 
@@ -149,7 +168,7 @@ export const useGameStore = create<GameState>((set, get) => {
     },
     isPhaseLocked: (phase) => {
       if (get().accessLevel === 'premium') return false;
-      return phase !== 'warehouse' && phase !== 'menu' && phase !== 'completed';
+      return phase !== 'warehouse' && phase !== 'transport' && phase !== 'menu' && phase !== 'completed';
     },
 
     // Language
@@ -160,30 +179,62 @@ export const useGameStore = create<GameState>((set, get) => {
     currentPhase: 'menu',
     setPhase: (phase) => {
       if (get().isPhaseLocked(phase)) return;
-      set({ currentPhase: phase });
+      const { currentHealth, totalScore } = get();
+      set({
+        currentPhase: phase,
+        phaseAuditStart: isAuditablePhase(phase)
+          ? { phase, health: currentHealth, score: totalScore }
+          : null,
+      });
     },
     nextPhase: () => {
-      const current = get().currentPhase;
+      const state = get();
+      const current = state.currentPhase;
       const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
       const currentIndex = phaseOrder.indexOf(current);
 
-      if (current !== 'menu' && current !== 'completed') {
-        get().markPhaseCompleted(current);
+      if (isAuditablePhase(current)) {
+        const phaseAuditStart =
+          state.phaseAuditStart?.phase === current
+            ? state.phaseAuditStart
+            : { phase: current, health: state.currentHealth, score: state.totalScore };
+        const phaseErrors = state.errors.filter((error) => error.phase === current);
+
+        state.addPhaseScore({
+          phase: current,
+          startHealth: phaseAuditStart.health,
+          endHealth: state.currentHealth,
+          startScore: phaseAuditStart.score,
+          endScore: state.totalScore,
+          errors: phaseErrors,
+          completed: true,
+          bonusPoints: state.totalScore - phaseAuditStart.score,
+        });
+        state.markPhaseCompleted(current);
       }
-      
+
       if (currentIndex < phaseOrder.length - 1) {
         const next = phaseOrder[currentIndex + 1];
-        if (isDemoMode && current === 'warehouse') {
-          set({ currentPhase: 'completed', isPlaying: false });
+        if (isDemoMode && current === 'transport') {
+          set({ currentPhase: 'completed', isPlaying: false, phaseAuditStart: null });
           return;
         }
-        if (get().isPhaseLocked(next)) {
-          set({ currentPhase: 'completed', isPlaying: false });
+        if (state.isPhaseLocked(next)) {
+          set({ currentPhase: 'completed', isPlaying: false, phaseAuditStart: null });
         } else {
-          set({ currentPhase: next });
+          set({
+            currentPhase: next,
+            phaseAuditStart: { phase: next, health: state.currentHealth, score: state.totalScore },
+            transportGroundItems:
+              current === 'warehouse' && next === 'transport' ? [...state.loadedItems] : state.transportGroundItems,
+            transportTruckItems:
+              current === 'warehouse' && next === 'transport' ? [] : state.transportTruckItems,
+            isStrapped: current === 'warehouse' && next === 'transport' ? false : state.isStrapped,
+            weightBalance: current === 'warehouse' && next === 'transport' ? 0 : state.weightBalance,
+          });
         }
       } else {
-        set({ currentPhase: 'completed', isPlaying: false });
+        set({ currentPhase: 'completed', isPlaying: false, phaseAuditStart: null });
       }
     },
     
@@ -204,7 +255,8 @@ export const useGameStore = create<GameState>((set, get) => {
     })),
     phaseScores: [],
     addPhaseScore: (score) => set((state) => ({
-      phaseScores: [...state.phaseScores, score],
+      phaseScores: [...state.phaseScores.filter((entry) => entry.phase !== score.phase), score]
+        .sort((a, b) => phaseOrder.indexOf(a.phase) - phaseOrder.indexOf(b.phase)),
     })),
     
     // Errors
@@ -250,6 +302,8 @@ export const useGameStore = create<GameState>((set, get) => {
         errors: [],
         phaseScores: [],
         loadedItems: [],
+        transportGroundItems: [],
+        transportTruckItems: [],
         storageLocations: {},
         isStrapped: false,
         weightBalance: 0,
@@ -260,6 +314,7 @@ export const useGameStore = create<GameState>((set, get) => {
         unlockedPhases: ['warehouse'],
         completedPhases: [],
         notices: [],
+        phaseAuditStart: { phase: 'warehouse', health: 100, score: 0 },
       });
     },
     pauseGame: () => set({ isPaused: true }),
@@ -274,6 +329,8 @@ export const useGameStore = create<GameState>((set, get) => {
       isPlaying: false,
       isPaused: false,
       loadedItems: [],
+      transportGroundItems: [],
+      transportTruckItems: [],
       storageLocations: {},
       isStrapped: false,
       weightBalance: 0,
@@ -284,6 +341,7 @@ export const useGameStore = create<GameState>((set, get) => {
       unlockedPhases: ['warehouse'],
       completedPhases: [],
       notices: [],
+      phaseAuditStart: null,
     }),
     
     // Progress
@@ -302,10 +360,15 @@ export const useGameStore = create<GameState>((set, get) => {
     // Storage & Logistics State
     loadedItems: [],
     setLoadedItems: (items) => set({ loadedItems: items }),
+    transportGroundItems: [],
+    setTransportGroundItems: (items) => set({ transportGroundItems: items }),
+    transportTruckItems: [],
+    setTransportTruckItems: (items) => set({ transportTruckItems: items }),
     storageLocations: {},
     setStorageLocation: (itemId, pos) => set((state) => ({
       storageLocations: { ...state.storageLocations, [itemId]: pos }
     })),
+    clearStorageLocations: () => set({ storageLocations: {} }),
 
     // Transport Specific
     isStrapped: false,
@@ -324,5 +387,23 @@ export const useGameStore = create<GameState>((set, get) => {
     })),
     lastAssemblyStep: 0,
     setLastAssemblyStep: (lastAssemblyStep) => set({ lastAssemblyStep }),
+
+    // Internal Audit State
+    phaseAuditStart: null,
+    beginPhaseAudit: (phase) => {
+      if (!isAuditablePhase(phase)) {
+        set({ phaseAuditStart: null });
+        return;
+      }
+
+      const { currentHealth, totalScore } = get();
+      set({
+        phaseAuditStart: {
+          phase,
+          health: currentHealth,
+          score: totalScore,
+        },
+      });
+    },
   };
 });

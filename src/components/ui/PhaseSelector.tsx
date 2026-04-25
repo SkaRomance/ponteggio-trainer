@@ -13,7 +13,7 @@ const phases: { id: GamePhase; label: string; icon: string }[] = [
 ];
 
 export default function PhaseSelector() {
-  const { currentPhase, unlockedPhases, completedPhases, setPhase } = useGameStore();
+  const { currentPhase, unlockedPhases, completedPhases, isPlaying, setPhase } = useGameStore();
 
   return (
     <div className="phase-selector" role="tablist" aria-label="Fasi del percorso">
@@ -21,6 +21,7 @@ export default function PhaseSelector() {
         const isUnlocked = unlockedPhases.includes(phase.id);
         const isActive = currentPhase === phase.id;
         const isCompleted = completedPhases.includes(phase.id);
+        const canNavigate = isUnlocked && !isPlaying;
 
         return (
           <button
@@ -30,8 +31,9 @@ export default function PhaseSelector() {
             aria-selected={isActive}
             aria-current={isActive ? 'step' : undefined}
             className={`phase-btn ${isActive ? 'active' : ''} ${isUnlocked ? 'unlocked' : 'locked'}`}
-            onClick={() => isUnlocked && setPhase(phase.id)}
-            disabled={!isUnlocked}
+            onClick={() => canNavigate && setPhase(phase.id)}
+            disabled={!canNavigate}
+            title={isPlaying ? 'Navigazione bloccata durante la simulazione attiva' : undefined}
           >
             <span className="phase-number">{index + 1}</span>
             <span className="phase-icon" aria-hidden="true">{phase.icon}</span>

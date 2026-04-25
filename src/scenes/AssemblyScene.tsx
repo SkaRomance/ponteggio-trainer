@@ -23,7 +23,6 @@ const MARS_DANGER = '#DC2626';
 const MARS_TEXT = '#0a0a0a';
 const MARS_MUTED = '#555555';
 const MARS_BORDER = '#d1cdc7';
-const MARS_FONT = 'Inter';
 
 const panelShellStyle: CSSProperties = {
   width: 'min(420px, 90vw)',
@@ -78,7 +77,7 @@ function SnapPoint({ position, type, onSnap, active }: {
         </Box>
       </mesh>
       {active && (
-        <Text position={[0, 0.8, 0]} fontSize={0.15} color={MARS_ACCENT} font={MARS_FONT}>
+        <Text position={[0, 0.8, 0]} fontSize={0.15} color={MARS_ACCENT}>
           MONTA {type.toUpperCase()}
         </Text>
       )}
@@ -269,7 +268,7 @@ export default function AssemblyScene() {
       </Html>
 
       <Center top position={[0, 18, -8]}>
-        <Text fontSize={1} color={MARS_PRIMARY} font={MARS_FONT}>MONTAGGIO STRUTTURALE</Text>
+        <Text fontSize={1} color={MARS_PRIMARY}>MONTAGGIO STRUTTURALE</Text>
       </Center>
     </group>
   );
