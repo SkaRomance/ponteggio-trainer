@@ -1,10 +1,20 @@
 import { useGameStore } from '../../stores/gameStore';
 import type { GamePhase } from '../../stores/gameStore';
-import { Lock, ShoppingCart } from 'lucide-react';
+import { Lock } from 'lucide-react';
+import { formatDate, formatRole } from '../../models/accessControl';
+import AccessStatusPanel from './AccessStatusPanel';
 import CourseSessionPanel from './CourseSessionPanel';
 
 export default function StartMenu() {
-  const { startGame, accessLevel, isPhaseLocked, setAccessLevel, isCourseSessionReady } = useGameStore();
+  const {
+    startGame,
+    accessLevel,
+    authIdentity,
+    licenseEntitlement,
+    isPhaseLocked,
+    isCourseSessionReady,
+    canViewGlobalSessions,
+  } = useGameStore();
   const sessionReady = isCourseSessionReady();
 
   const phases: { id: GamePhase; label: string; icon: string }[] = [
@@ -16,13 +26,6 @@ export default function StartMenu() {
     { id: 'disassembly', label: 'Smontaggio sicuro', icon: '🧱' },
     { id: 'return', label: 'Report finale', icon: '📊' },
   ];
-
-  const handlePurchase = () => {
-    const confirmPurchase = window.confirm('Attivare la licenza premium per accedere a tutte le fasi?');
-    if (confirmPurchase) {
-      setAccessLevel('premium');
-    }
-  };
 
   return (
     <div className="start-menu">
@@ -48,15 +51,22 @@ export default function StartMenu() {
             <div className="menu-stat-label">Fasi operative</div>
           </div>
           <div>
-            <div className="menu-stat-value">{accessLevel === 'free' ? 'Demo' : 'Premium'}</div>
+            <div className="menu-stat-value">
+              {authIdentity.role === 'admin' ? 'Admin' : accessLevel === 'free' ? 'Base' : 'Licenza'}
+            </div>
             <div className="menu-stat-label">Accesso attivo</div>
           </div>
           <div>
-            <div className="menu-stat-value">81/08</div>
-            <div className="menu-stat-label">Riferimento normativo</div>
+            <div className="menu-stat-value">
+              {licenseEntitlement.status === 'active' ? formatDate(licenseEntitlement.expiresAt) : '81/08'}
+            </div>
+            <div className="menu-stat-label">
+              {licenseEntitlement.status === 'active' ? 'Scadenza licenza' : 'Riferimento normativo'}
+            </div>
           </div>
         </div>
 
+        <AccessStatusPanel />
         <CourseSessionPanel />
 
         <ul className="phases-grid" aria-label="Fasi del percorso">
@@ -74,7 +84,7 @@ export default function StartMenu() {
                   <div>
                     <span className="phase-item-title">{phase.label}</span>
                     <span className="phase-item-status">
-                      {locked ? 'Disponibile con licenza premium' : 'Inclusa nel percorso attivo'}
+                      {locked ? 'Richiede licenza attiva validata lato server' : 'Inclusa nel percorso autorizzato'}
                     </span>
                   </div>
                 </div>
@@ -92,19 +102,8 @@ export default function StartMenu() {
             disabled={!sessionReady}
             aria-describedby={!sessionReady ? 'session-required-note' : undefined}
           >
-            {accessLevel === 'free' ? 'Avvia la demo' : 'Avvia la simulazione'}
+            {accessLevel === 'free' ? 'Avvia il percorso base' : 'Avvia la simulazione completa'}
           </button>
-
-          {accessLevel === 'free' && (
-            <button 
-              type="button"
-              className="btn-secondary"
-              onClick={handlePurchase}
-            >
-              <ShoppingCart size={18} aria-hidden="true" />
-              Sblocca tutte le fasi
-            </button>
-          )}
         </div>
 
         {!sessionReady && (
@@ -112,6 +111,12 @@ export default function StartMenu() {
             Completa almeno allievo, docente, soggetto formatore e codice corso prima di avviare una sessione tracciata.
           </p>
         )}
+
+        <p className="menu-license-note">
+          {canViewGlobalSessions()
+            ? `Profilo ${formatRole(authIdentity.role)} con permesso di audit globale. Collegare un archivio server-side per vedere tutte le sessioni.`
+            : 'Le fasi complete, gli aggiornamenti e gli upgrade triennali dipendono da licenza server-side attiva, non da sblocchi locali nel browser.'}
+        </p>
 
         <p className="menu-legal">
           Piattaforma dimostrativa Mars Compliance S.r.l. Tutti i diritti riservati © 2026.

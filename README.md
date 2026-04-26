@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# Ponteggio Trainer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+`ponteggio-trainer` is a Vite + React + TypeScript training simulator for scaffold safety workflows. The current app already includes multi-phase gameplay, auditable session metadata, client-side JSON/CSV report export, and optional WebXR entry points for classroom or headset-assisted sessions.
 
-Currently, two official plugins are available:
+## Current scope
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Frontend SPA deployed on Vercel
+- Server-synced access model via `/api/me` with admin/customer/instructor roles
+- Session evidence fields for trainee, instructor, provider, course code, location, VR device, scenario seed, and timestamps
+- Local session report generation with event logs, per-phase outcomes, and evidence-mode warnings
+- Bootstrap auth endpoints under `/api/auth/*` using HttpOnly signed cookies and env-configured accounts
 
-## React Compiler
+## Architecture docs
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- [ADR-0001: Auth, Licensing, and Evidence Persistence](./docs/auth-licensing-adr.md)
+- [Security Headers Notes](./docs/security-headers.md)
 
-## Expanding the ESLint configuration
+That ADR is the source of truth for:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- admin authentication
+- customer and instructor authentication
+- 3-year tenant licensing
+- session evidence storage and integrity
+- tenant boundaries
+- Vercel API surface
+- staged rollout
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Development
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
+npm run build
+npm run lint
+npm run hash-password -- "my-password"
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Notes
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- The app is still a client-rendered SPA, but `/api/*` is now reserved for Vercel Functions and excluded from the SPA fallback rewrite.
+- Premium access can no longer be unlocked from `localStorage`; role and license state are hydrated from the backend contract.
+- Global session visibility is not yet persistent because a database-backed evidence archive has not been connected yet.
+- Use `.env.example` as the starting point for `MARS_AUTH_SECRET` and `MARS_AUTH_ACCOUNTS_JSON` in local or Vercel environments.

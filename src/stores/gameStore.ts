@@ -1,16 +1,31 @@
 import { create } from 'zustand';
 import type { Locale } from '../i18n';
+import {
+  canViewAllSessions,
+  createAccessApiResponse,
+  createAnonymousIdentity,
+  createMissingLicense,
+  getAccessLevel,
+  getSessionMode,
+  type AccessApiResponse,
+  type AccessLevel,
+  type AccessSyncStatus,
+  type AuthIdentity,
+  type EvidenceMode,
+  type LicenseEntitlement,
+  type SessionsArchiveStatus,
+} from '../models/accessControl';
 
-export type GamePhase = 
+export type GamePhase =
   | 'menu'
-  | 'warehouse'      // Fase 1: Magazzino
-  | 'transport'      // Fase 2: Trasporto
-  | 'storage'        // Fase 3: Stoccaggio
-  | 'assembly'       // Fase 4: Montaggio
-  | 'use'            // Fase 5: Uso
-  | 'disassembly'    // Fase 6: Smontaggio
-  | 'return'         // Fase 7: Ritorno
-  | 'completed';     // Fine gioco
+  | 'warehouse'
+  | 'transport'
+  | 'storage'
+  | 'assembly'
+  | 'use'
+  | 'disassembly'
+  | 'return'
+  | 'completed';
 
 export type ErrorSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type NoticeSeverity = 'success' | 'warning' | 'error' | 'info';
@@ -48,6 +63,14 @@ export interface CourseSession {
   endedAt: string | null;
   mode: 'demo' | 'full';
   evidenceVersion: string;
+  organizationId: string | null;
+  organizationName: string | null;
+  licenseId: string | null;
+  startedByUserId: string | null;
+  startedByRole: AuthIdentity['role'];
+  licenseExpiresAt: string | null;
+  updatesUntil: string | null;
+  evidenceMode: EvidenceMode;
 }
 
 export interface TrainingEvent {
@@ -83,52 +106,53 @@ export interface GameNotice {
 }
 
 export interface GameState {
-  // Access Control
-  accessLevel: 'free' | 'premium';
-  setAccessLevel: (level: 'free' | 'premium') => void;
+  accessLevel: AccessLevel;
   isPhaseLocked: (phase: GamePhase) => boolean;
+  authConfigured: boolean;
+  authIdentity: AuthIdentity;
+  licenseEntitlement: LicenseEntitlement;
+  accessSyncStatus: AccessSyncStatus;
+  accessSyncMessage: string | null;
+  evidenceMode: EvidenceMode;
+  sessionsArchiveStatus: SessionsArchiveStatus;
+  syncAccessState: () => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  canViewGlobalSessions: () => boolean;
 
-  // Language
   locale: Locale;
   setLocale: (locale: Locale) => void;
 
-  // Course Session / Evidence
   courseSession: CourseSession;
   sessionRunId: number;
   updateCourseSession: (patch: Partial<CourseSession>) => void;
   isCourseSessionReady: () => boolean;
   eventLog: TrainingEvent[];
   logEvent: (event: Omit<TrainingEvent, 'id' | 'timestamp'>) => void;
-  
-  // Game Flow
+
   currentPhase: GamePhase;
   setPhase: (phase: GamePhase) => void;
   nextPhase: () => void;
-  
-  // Health System
+
   currentHealth: number;
   maxHealth: number;
   reduceHealth: (amount: number) => void;
   resetHealth: () => void;
-  
-  // Score System
+
   totalScore: number;
   addScore: (points: number) => void;
   phaseScores: PhaseScore[];
   addPhaseScore: (score: PhaseScore) => void;
-  
-  // Errors
+
   errors: GameError[];
   addError: (error: Omit<GameError, 'id' | 'timestamp'>) => void;
   clearErrors: () => void;
 
-  // Notices
   notices: GameNotice[];
   pushNotice: (notice: Omit<GameNotice, 'id' | 'timestamp'>) => void;
   dismissNotice: (id: string) => void;
   clearNotices: () => void;
-  
-  // Game State
+
   isPlaying: boolean;
   isPaused: boolean;
   startGame: () => void;
@@ -136,14 +160,12 @@ export interface GameState {
   resumeGame: () => void;
   endGame: () => void;
   resetGame: () => void;
-  
-  // Progress
+
   unlockedPhases: GamePhase[];
   unlockPhase: (phase: GamePhase) => void;
   completedPhases: GamePhase[];
   markPhaseCompleted: (phase: GamePhase) => void;
 
-  // Storage & Logistics State
   loadedItems: string[];
   setLoadedItems: (items: string[]) => void;
   transportGroundItems: string[];
@@ -153,14 +175,12 @@ export interface GameState {
   storageLocations: Record<string, { x: number; y: number; z: number }>;
   setStorageLocation: (itemId: string, pos: { x: number; y: number; z: number }) => void;
   clearStorageLocations: () => void;
-  
-  // Transport Specific
+
   isStrapped: boolean;
   setStrapped: (val: boolean) => void;
-  weightBalance: number; // -1 to 1 (left to right balance)
+  weightBalance: number;
   setWeightBalance: (val: number) => void;
 
-  // Assembly & PPE State
   isHarnessed: boolean;
   setHarnessed: (val: boolean) => void;
   isHooked: boolean;
@@ -170,7 +190,6 @@ export interface GameState {
   lastAssemblyStep: number;
   setLastAssemblyStep: (step: number) => void;
 
-  // Internal Audit State
   phaseAuditStart: PhaseAuditStart | null;
   beginPhaseAudit: (phase: GamePhase) => void;
 }
@@ -200,22 +219,60 @@ const createSessionId = () => {
   return `MARS-PONTEGGIO-${datePart}-${randomPart}`;
 };
 
-const createScenarioSeed = () => `SEED-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+const createScenarioSeed = () =>
+  `SEED-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-const createCourseSession = (mode: CourseSession['mode'] = 'full'): CourseSession => ({
-  sessionId: createSessionId(),
-  scenarioSeed: createScenarioSeed(),
-  traineeName: '',
-  instructorName: '',
-  providerName: '',
-  courseCode: '',
-  location: '',
-  vrDeviceId: '',
-  startedAt: null,
-  endedAt: null,
+const withAccessContext = (
+  session: CourseSession,
+  identity: AuthIdentity,
+  license: LicenseEntitlement,
+  evidenceMode: EvidenceMode,
+  mode: CourseSession['mode'],
+): CourseSession => ({
+  ...session,
   mode,
-  evidenceVersion: 'mars-ponteggio-evidence-v1',
+  organizationId: identity.organizationId ?? license.organizationId,
+  organizationName: license.organizationName,
+  licenseId: license.licenseId,
+  startedByUserId: identity.userId,
+  startedByRole: identity.role,
+  licenseExpiresAt: license.expiresAt,
+  updatesUntil: license.updatesUntil,
+  evidenceMode,
 });
+
+const createCourseSession = (
+  mode: CourseSession['mode'] = 'demo',
+  accessResponse: AccessApiResponse = createAccessApiResponse(),
+): CourseSession =>
+  withAccessContext(
+    {
+      sessionId: createSessionId(),
+      scenarioSeed: createScenarioSeed(),
+      traineeName: '',
+      instructorName: '',
+      providerName: '',
+      courseCode: '',
+      location: '',
+      vrDeviceId: '',
+      startedAt: null,
+      endedAt: null,
+      mode,
+      evidenceVersion: 'mars-ponteggio-evidence-v2',
+      organizationId: null,
+      organizationName: null,
+      licenseId: null,
+      startedByUserId: null,
+      startedByRole: 'anonymous',
+      licenseExpiresAt: null,
+      updatesUntil: null,
+      evidenceMode: accessResponse.evidenceMode,
+    },
+    accessResponse.identity,
+    accessResponse.license,
+    accessResponse.evidenceMode,
+    mode,
+  );
 
 const createTrainingEvent = (event: Omit<TrainingEvent, 'id' | 'timestamp'>): TrainingEvent => ({
   ...event,
@@ -228,53 +285,185 @@ const completeSession = (session: CourseSession): CourseSession => ({
   endedAt: session.endedAt ?? new Date().toISOString(),
 });
 
+const parseAccessResponse = async (response: Response) => {
+  const payload = (await response.json()) as Partial<AccessApiResponse>;
+  return createAccessApiResponse(payload);
+};
+
+const readResponseMessage = async (response: Response, fallback: string) => {
+  try {
+    const payload = (await response.json()) as { message?: string };
+    return payload.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export const useGameStore = create<GameState>((set, get) => {
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
-  const initialAccessLevel: 'free' | 'premium' = isDemoMode
-    ? 'free'
-    : (localStorage.getItem('mars_access_level') as 'free' | 'premium') || 'free';
+  const initialAccessResponse = createAccessApiResponse();
+  const initialMode = getSessionMode(
+    initialAccessResponse.identity,
+    initialAccessResponse.license,
+    isDemoMode,
+  );
 
   return {
-    // Access Control
-    accessLevel: initialAccessLevel,
-    setAccessLevel: (level) => {
-      if (isDemoMode) return;
-      localStorage.setItem('mars_access_level', level);
-      set({ accessLevel: level });
-    },
+    accessLevel: isDemoMode
+      ? 'free'
+      : getAccessLevel(initialAccessResponse.identity, initialAccessResponse.license),
     isPhaseLocked: (phase) => {
       if (get().accessLevel === 'premium') return false;
       return phase !== 'warehouse' && phase !== 'transport' && phase !== 'menu' && phase !== 'completed';
     },
+    authConfigured: false,
+    authIdentity: createAnonymousIdentity(),
+    licenseEntitlement: createMissingLicense(),
+    accessSyncStatus: 'idle',
+    accessSyncMessage: null,
+    evidenceMode: initialAccessResponse.evidenceMode,
+    sessionsArchiveStatus: initialAccessResponse.sessionsArchiveStatus,
+    syncAccessState: async () => {
+      set({ accessSyncStatus: 'loading', accessSyncMessage: null });
 
-    // Language
+      try {
+        const response = await fetch('/api/me', {
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          throw new Error(await readResponseMessage(response, 'Impossibile sincronizzare l’accesso.'));
+        }
+
+        const payload = await parseAccessResponse(response);
+        const nextAccessLevel = isDemoMode ? 'free' : getAccessLevel(payload.identity, payload.license);
+        const nextMode = getSessionMode(payload.identity, payload.license, isDemoMode);
+
+        set((state) => ({
+          authConfigured: payload.configured,
+          authIdentity: payload.identity,
+          licenseEntitlement: payload.license,
+          accessLevel: nextAccessLevel,
+          evidenceMode: payload.evidenceMode,
+          sessionsArchiveStatus: payload.sessionsArchiveStatus,
+          accessSyncStatus: 'ready',
+          accessSyncMessage: payload.message,
+          courseSession: withAccessContext(
+            {
+              ...state.courseSession,
+              mode: nextMode,
+            },
+            payload.identity,
+            payload.license,
+            payload.evidenceMode,
+            nextMode,
+          ),
+        }));
+      } catch (error) {
+        set({
+          authConfigured: false,
+          authIdentity: createAnonymousIdentity(),
+          licenseEntitlement: createMissingLicense(),
+          accessLevel: 'free',
+          evidenceMode: 'local-preview',
+          sessionsArchiveStatus: 'unavailable',
+          accessSyncStatus: 'error',
+          accessSyncMessage: error instanceof Error ? error.message : 'Errore di sincronizzazione accessi.',
+        });
+      }
+    },
+    login: async (email, password) => {
+      set({ accessSyncStatus: 'loading', accessSyncMessage: null });
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await readResponseMessage(response, 'Credenziali non valide.'));
+        }
+
+        await get().syncAccessState();
+        return true;
+      } catch (error) {
+        set({
+          accessSyncStatus: 'error',
+          accessSyncMessage: error instanceof Error ? error.message : 'Errore di autenticazione.',
+        });
+        return false;
+      }
+    },
+    logout: async () => {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+      } catch {
+        // Even if the backend call fails, the local UI should fall back to anonymous access.
+      }
+
+      const anonymousIdentity = createAnonymousIdentity();
+      const missingLicense = createMissingLicense();
+      const nextMode = getSessionMode(anonymousIdentity, missingLicense, isDemoMode);
+
+      set((state) => ({
+        accessLevel: 'free',
+        authIdentity: anonymousIdentity,
+        licenseEntitlement: missingLicense,
+        evidenceMode: 'local-preview',
+        sessionsArchiveStatus: 'unavailable',
+        accessSyncStatus: 'ready',
+        accessSyncMessage: state.authConfigured
+          ? 'Sessione autenticata chiusa. Archivio globale non disponibile senza backend.'
+          : 'Sessione chiusa.',
+        courseSession: withAccessContext(
+          {
+            ...state.courseSession,
+            mode: nextMode,
+          },
+          anonymousIdentity,
+          missingLicense,
+          'local-preview',
+          nextMode,
+        ),
+      }));
+    },
+    canViewGlobalSessions: () => canViewAllSessions(get().authIdentity, get().licenseEntitlement),
+
     locale: 'it',
     setLocale: (locale) => set({ locale }),
 
-    // Course Session / Evidence
-    courseSession: createCourseSession(isDemoMode || initialAccessLevel === 'free' ? 'demo' : 'full'),
+    courseSession: createCourseSession(initialMode, initialAccessResponse),
     sessionRunId: 0,
-    updateCourseSession: (patch) => set((state) => ({
-      courseSession: {
-        ...state.courseSession,
-        ...patch,
-      },
-    })),
+    updateCourseSession: (patch) =>
+      set((state) => ({
+        courseSession: {
+          ...state.courseSession,
+          ...patch,
+        },
+      })),
     isCourseSessionReady: () => {
       const { courseSession } = get();
       return Boolean(
         courseSession.traineeName.trim() &&
-        courseSession.instructorName.trim() &&
-        courseSession.providerName.trim() &&
-        courseSession.courseCode.trim(),
+          courseSession.instructorName.trim() &&
+          courseSession.providerName.trim() &&
+          courseSession.courseCode.trim(),
       );
     },
     eventLog: [],
-    logEvent: (event) => set((state) => ({
-      eventLog: [...state.eventLog, createTrainingEvent(event)],
-    })),
-    
-    // Game Flow
+    logEvent: (event) =>
+      set((state) => ({
+        eventLog: [...state.eventLog, createTrainingEvent(event)],
+      })),
+
     currentPhase: 'menu',
     setPhase: (phase) => {
       if (get().isPhaseLocked(phase)) return;
@@ -289,7 +478,6 @@ export const useGameStore = create<GameState>((set, get) => {
     nextPhase: () => {
       const state = get();
       const current = state.currentPhase;
-      const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
       const currentIndex = phaseOrder.indexOf(current);
 
       if (isAuditablePhase(current)) {
@@ -396,8 +584,7 @@ export const useGameStore = create<GameState>((set, get) => {
         });
       }
     },
-    
-    // Health System
+
     currentHealth: 100,
     maxHealth: 100,
     reduceHealth: (amount) => {
@@ -406,19 +593,20 @@ export const useGameStore = create<GameState>((set, get) => {
       if (newHealth === 0) get().endGame();
     },
     resetHealth: () => set({ currentHealth: 100 }),
-    
-    // Score System
+
     totalScore: 0,
-    addScore: (points) => set((state) => ({ 
-      totalScore: state.totalScore + points 
-    })),
+    addScore: (points) =>
+      set((state) => ({
+        totalScore: state.totalScore + points,
+      })),
     phaseScores: [],
-    addPhaseScore: (score) => set((state) => ({
-      phaseScores: [...state.phaseScores.filter((entry) => entry.phase !== score.phase), score]
-        .sort((a, b) => phaseOrder.indexOf(a.phase) - phaseOrder.indexOf(b.phase)),
-    })),
-    
-    // Errors
+    addPhaseScore: (score) =>
+      set((state) => ({
+        phaseScores: [...state.phaseScores.filter((entry) => entry.phase !== score.phase), score].sort(
+          (a, b) => phaseOrder.indexOf(a.phase) - phaseOrder.indexOf(b.phase),
+        ),
+      })),
+
     errors: [],
     addError: (error) => {
       const newError: GameError = {
@@ -440,7 +628,6 @@ export const useGameStore = create<GameState>((set, get) => {
     },
     clearErrors: () => set({ errors: [] }),
 
-    // Notices
     notices: [],
     pushNotice: (notice) => {
       const newNotice: GameNotice = {
@@ -462,26 +649,33 @@ export const useGameStore = create<GameState>((set, get) => {
         },
       });
     },
-    dismissNotice: (id) => set((state) => ({
-      notices: state.notices.filter((notice) => notice.id !== id),
-    })),
+    dismissNotice: (id) =>
+      set((state) => ({
+        notices: state.notices.filter((notice) => notice.id !== id),
+      })),
     clearNotices: () => set({ notices: [] }),
-    
-    // Game State
+
     isPlaying: false,
     isPaused: false,
     startGame: () => {
-      const previousSession = get().courseSession;
+      const state = get();
+      const previousSession = state.courseSession;
       const nextSessionId = createSessionId();
-      const runMode: CourseSession['mode'] = isDemoMode || get().accessLevel === 'free' ? 'demo' : 'full';
-      const nextSession: CourseSession = {
-        ...previousSession,
-        sessionId: nextSessionId,
-        scenarioSeed: previousSession.scenarioSeed.trim() || createScenarioSeed(),
-        startedAt: new Date().toISOString(),
-        endedAt: null,
-        mode: runMode,
-      };
+      const runMode = getSessionMode(state.authIdentity, state.licenseEntitlement, isDemoMode);
+      const nextSession = withAccessContext(
+        {
+          ...previousSession,
+          sessionId: nextSessionId,
+          scenarioSeed: previousSession.scenarioSeed.trim() || createScenarioSeed(),
+          startedAt: new Date().toISOString(),
+          endedAt: null,
+          mode: runMode,
+        },
+        state.authIdentity,
+        state.licenseEntitlement,
+        state.evidenceMode,
+        runMode,
+      );
       const sessionStartEvent = createTrainingEvent({
         type: 'session_started',
         phase: 'warehouse',
@@ -489,12 +683,14 @@ export const useGameStore = create<GameState>((set, get) => {
           sessionId: nextSessionId,
           mode: nextSession.mode,
           scenarioSeed: nextSession.scenarioSeed,
+          organizationId: nextSession.organizationId,
+          licenseId: nextSession.licenseId,
         },
       });
 
-      set({ 
-        isPlaying: true, 
-        isPaused: false, 
+      set({
+        isPlaying: true,
+        isPaused: false,
         currentPhase: 'warehouse',
         currentHealth: 100,
         totalScore: 0,
@@ -516,7 +712,7 @@ export const useGameStore = create<GameState>((set, get) => {
         eventLog: [sessionStartEvent],
         phaseAuditStart: { phase: 'warehouse', health: 100, score: 0 },
         courseSession: nextSession,
-        sessionRunId: get().sessionRunId + 1,
+        sessionRunId: state.sessionRunId + 1,
       });
     },
     pauseGame: () => set({ isPaused: true }),
@@ -578,40 +774,41 @@ export const useGameStore = create<GameState>((set, get) => {
         ],
       });
     },
-    resetGame: () => set({
-      currentPhase: 'menu',
-      currentHealth: 100,
-      totalScore: 0,
-      errors: [],
-      phaseScores: [],
-      isPlaying: false,
-      isPaused: false,
-      loadedItems: [],
-      transportGroundItems: [],
-      transportTruckItems: [],
-      storageLocations: {},
-      isStrapped: false,
-      weightBalance: 0,
-      isHarnessed: false,
-      isHooked: false,
-      assembledItems: [],
-      lastAssemblyStep: 0,
-      unlockedPhases: ['warehouse'],
-      completedPhases: [],
-      notices: [],
-      eventLog: [],
-      phaseAuditStart: null,
-      courseSession: {
-        ...get().courseSession,
-        endedAt: get().courseSession.endedAt ?? new Date().toISOString(),
-      },
-    }),
-    
-    // Progress
+    resetGame: () =>
+      set((state) => ({
+        currentPhase: 'menu',
+        currentHealth: 100,
+        totalScore: 0,
+        errors: [],
+        phaseScores: [],
+        isPlaying: false,
+        isPaused: false,
+        loadedItems: [],
+        transportGroundItems: [],
+        transportTruckItems: [],
+        storageLocations: {},
+        isStrapped: false,
+        weightBalance: 0,
+        isHarnessed: false,
+        isHooked: false,
+        assembledItems: [],
+        lastAssemblyStep: 0,
+        unlockedPhases: ['warehouse'],
+        completedPhases: [],
+        notices: [],
+        eventLog: [],
+        phaseAuditStart: null,
+        courseSession: {
+          ...state.courseSession,
+          endedAt: state.courseSession.endedAt ?? new Date().toISOString(),
+        },
+      })),
+
     unlockedPhases: ['warehouse'],
-    unlockPhase: (phase) => set((state) => ({
-      unlockedPhases: [...new Set([...state.unlockedPhases, phase])],
-    })),
+    unlockPhase: (phase) =>
+      set((state) => ({
+        unlockedPhases: [...new Set([...state.unlockedPhases, phase])],
+      })),
     completedPhases: [],
     markPhaseCompleted: (phase) => {
       if (phase === 'menu' || phase === 'completed') return;
@@ -620,7 +817,6 @@ export const useGameStore = create<GameState>((set, get) => {
       }));
     },
 
-    // Storage & Logistics State
     loadedItems: [],
     setLoadedItems: (items) => set({ loadedItems: items }),
     transportGroundItems: [],
@@ -628,30 +824,29 @@ export const useGameStore = create<GameState>((set, get) => {
     transportTruckItems: [],
     setTransportTruckItems: (items) => set({ transportTruckItems: items }),
     storageLocations: {},
-    setStorageLocation: (itemId, pos) => set((state) => ({
-      storageLocations: { ...state.storageLocations, [itemId]: pos }
-    })),
+    setStorageLocation: (itemId, pos) =>
+      set((state) => ({
+        storageLocations: { ...state.storageLocations, [itemId]: pos },
+      })),
     clearStorageLocations: () => set({ storageLocations: {} }),
 
-    // Transport Specific
     isStrapped: false,
     setStrapped: (isStrapped) => set({ isStrapped }),
     weightBalance: 0,
     setWeightBalance: (weightBalance) => set({ weightBalance }),
 
-    // Assembly & PPE State
     isHarnessed: false,
     setHarnessed: (isHarnessed) => set({ isHarnessed }),
     isHooked: false,
     setHooked: (isHooked) => set({ isHooked }),
     assembledItems: [],
-    addAssembledItem: (id) => set((state) => ({
-      assembledItems: [...state.assembledItems, id]
-    })),
+    addAssembledItem: (id) =>
+      set((state) => ({
+        assembledItems: [...state.assembledItems, id],
+      })),
     lastAssemblyStep: 0,
     setLastAssemblyStep: (lastAssemblyStep) => set({ lastAssemblyStep }),
 
-    // Internal Audit State
     phaseAuditStart: null,
     beginPhaseAudit: (phase) => {
       if (!isAuditablePhase(phase)) {

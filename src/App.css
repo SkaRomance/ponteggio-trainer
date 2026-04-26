@@ -627,6 +627,113 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+.access-panel {
+  position: relative;
+  z-index: 1;
+  margin: 1.75rem 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.04), rgba(255, 255, 255, 0.94));
+  box-shadow: var(--shadow-card);
+}
+
+.access-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.access-panel-header h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  color: var(--mars-dark);
+}
+
+.access-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.8rem;
+  color: var(--safety-red);
+  background: rgba(220, 38, 38, 0.08);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.access-status-pill.active {
+  border-color: rgba(22, 163, 74, 0.26);
+  color: var(--safety-green);
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.access-card {
+  border: 1px solid var(--mars-border);
+  border-radius: 18px;
+  padding: 1rem 1.05rem;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.access-card-copy {
+  margin-top: 0.45rem;
+  color: var(--mars-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.access-capabilities {
+  margin: 1rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.45rem;
+  color: var(--mars-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.access-actions {
+  margin-top: 1rem;
+}
+
+.access-login-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.access-login-form .access-actions {
+  grid-column: 1 / -1;
+}
+
+.access-note,
+.access-feedback,
+.menu-license-note {
+  margin-top: 1rem;
+  color: var(--mars-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.access-feedback {
+  border: 1px solid rgba(26, 71, 42, 0.16);
+  border-radius: 14px;
+  padding: 0.75rem 0.9rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .course-session-header {
   display: flex;
   align-items: flex-start;
@@ -1793,6 +1900,8 @@ select:focus-visible {
   }
 
   .menu-stats,
+  .access-grid,
+  .access-login-form,
   .course-session-grid,
   .phases-grid,
   .demo-end-summary,

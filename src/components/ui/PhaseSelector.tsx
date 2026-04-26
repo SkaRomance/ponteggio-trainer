@@ -13,15 +13,16 @@ const phases: { id: GamePhase; label: string; icon: string }[] = [
 ];
 
 export default function PhaseSelector() {
-  const { currentPhase, unlockedPhases, completedPhases, isPlaying, setPhase } = useGameStore();
+  const { currentPhase, unlockedPhases, completedPhases, isPlaying, setPhase, isPhaseLocked } = useGameStore();
 
   return (
     <div className="phase-selector" role="tablist" aria-label="Fasi del percorso">
       {phases.map((phase, index) => {
         const isUnlocked = unlockedPhases.includes(phase.id);
+        const lockedByAccess = isPhaseLocked(phase.id);
         const isActive = currentPhase === phase.id;
         const isCompleted = completedPhases.includes(phase.id);
-        const canNavigate = isUnlocked && !isPlaying;
+        const canNavigate = isUnlocked && !lockedByAccess && !isPlaying;
 
         return (
           <button
@@ -40,7 +41,8 @@ export default function PhaseSelector() {
             <span className="phase-label">
               <FormattedMessage id={phase.label} defaultMessage={phase.id} />
             </span>
-            {!isUnlocked && <span className="phase-status">Premium</span>}
+            {!isUnlocked && lockedByAccess && <span className="phase-status">Licenza</span>}
+            {!isUnlocked && !lockedByAccess && <span className="phase-status">Progressione</span>}
             {isCompleted && <span className="phase-check">✓</span>}
           </button>
         );

@@ -45,12 +45,16 @@ const phaseConfig: Record<string, { name: string; icon: string }> = {
 };
 
 function App() {
-  const { locale, currentHealth, isPlaying, resetGame, currentPhase } = useGameStore();
+  const { locale, currentHealth, isPlaying, resetGame, currentPhase, syncAccessState } = useGameStore();
   const isGameOver = isPlaying === false && currentHealth <= 0;
   const [showTutorialMenu, setShowTutorialMenu] = useState(false);
   const [currentTutorial, setCurrentTutorial] = useState<string | null>(null);
   const inspection = useInspectionStore();
   const prevPhaseRef = useRef(currentPhase);
+
+  useEffect(() => {
+    void syncAccessState();
+  }, [syncAccessState]);
 
   // Reset inspection state when phase changes
   useEffect(() => {

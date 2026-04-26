@@ -5,6 +5,11 @@ export interface TrainingSessionReport {
   schemaVersion: string;
   generatedAt: string;
   integrityHash: string;
+  evidence: {
+    mode: GameState['courseSession']['evidenceMode'];
+    authority: 'local-preview' | 'server-signed';
+    warning: string | null;
+  };
   product: {
     name: string;
     purpose: string;
@@ -45,7 +50,8 @@ export interface TrainingSessionReport {
 }
 
 const csvEscape = (value: string | number | null | undefined) => {
-  const text = value === null || value === undefined ? '' : String(value);
+  const rawText = value === null || value === undefined ? '' : String(value);
+  const text = /^[\t\r ]*[=+\-@]/.test(rawText) ? `'${rawText}` : rawText;
   if (!/[",\n\r;]/.test(text)) return text;
   return `"${text.replace(/"/g, '""')}"`;
 };
@@ -78,6 +84,14 @@ export const buildTrainingSessionReport = (state: GameState): TrainingSessionRep
     schemaVersion: 'mars-ponteggio-training-report-v1',
     generatedAt: new Date().toISOString(),
     integrityHash: '',
+    evidence: {
+      mode: state.courseSession.evidenceMode,
+      authority: state.courseSession.evidenceMode === 'server-signed' ? 'server-signed' : 'local-preview',
+      warning:
+        state.courseSession.evidenceMode === 'server-signed'
+          ? null
+          : 'Evidenza locale non firmata dal server. Per audit globale e immutabilita serve archivio backend.',
+    },
     product: {
       name: 'MARS-Safe Ponteggio Trainer',
       purpose: 'Supporto didattico e simulativo per corsi ponteggi con tracciamento degli esiti.',
@@ -133,8 +147,12 @@ export const buildTrainingSessionCsv = (report: TrainingSessionReport) => {
     ['Mars Ponteggio Trainer - Report sessione'],
     ['Generato il', report.generatedAt],
     ['Hash integrita locale', report.integrityHash],
+    ['Modalita evidenza', report.evidence.mode],
+    ['Avviso evidenza', report.evidence.warning],
     ['Sessione', report.session.sessionId],
     ['Scenario seed', report.session.scenarioSeed],
+    ['Organizzazione', report.session.organizationName],
+    ['Licenza', report.session.licenseId],
     ['Allievo', report.session.traineeName],
     ['Docente/Istruttore', report.session.instructorName],
     ['Soggetto formatore', report.session.providerName],
