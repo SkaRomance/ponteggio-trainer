@@ -1,4 +1,4 @@
-import { json } from './_lib/auth';
+import { json } from './_lib/auth.js';
 
 export const config = {
   runtime: 'edge',

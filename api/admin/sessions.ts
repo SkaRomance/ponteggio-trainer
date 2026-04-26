@@ -1,1 +1,1 @@
-export { config, default } from './training-sessions';
+export { config, default } from './training-sessions.js';

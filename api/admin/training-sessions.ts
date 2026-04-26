@@ -1,5 +1,5 @@
-import { canViewAllSessions } from '../../src/models/accessControl';
-import { getAccessResponseForRequest, json } from '../_lib/auth';
+import { canViewAllSessions } from '../../src/models/accessControl.js';
+import { getAccessResponseForRequest, json } from '../_lib/auth.js';
 
 export const config = {
   runtime: 'edge',

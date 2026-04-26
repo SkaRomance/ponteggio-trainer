@@ -1,4 +1,4 @@
-import { json, getAccessResponseForRequest } from '../_lib/auth';
+import { json, getAccessResponseForRequest } from '../_lib/auth.js';
 
 export const config = {
   runtime: 'edge',

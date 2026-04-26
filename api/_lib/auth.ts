@@ -13,7 +13,7 @@ import {
   type LicensePlan,
   type LicenseStatus,
   type UserRole,
-} from '../../src/models/accessControl';
+} from '../../src/models/accessControl.js';
 
 type AccountRole = Exclude<UserRole, 'anonymous'>;
 

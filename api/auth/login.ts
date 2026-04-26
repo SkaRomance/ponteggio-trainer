@@ -1,4 +1,4 @@
-import { authenticateCredentials, json } from '../_lib/auth';
+import { authenticateCredentials, json } from '../_lib/auth.js';
 
 export const config = {
   runtime: 'edge',

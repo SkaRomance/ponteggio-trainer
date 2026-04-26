@@ -1,4 +1,4 @@
-import { clearSessionCookie, json } from '../_lib/auth';
+import { clearSessionCookie, json } from '../_lib/auth.js';
 
 export const config = {
   runtime: 'edge',
