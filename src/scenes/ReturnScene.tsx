@@ -4,6 +4,7 @@ import { Box, Text, Html } from '@react-three/drei';
 import { phaseOrder, useGameStore, type GamePhase, type PhaseScore } from '../stores/gameStore';
 import Avatar3D from '../components/game/Avatar3D';
 import { phaseContent } from '../config/phaseContent';
+import SessionReportActions from '../components/ui/SessionReportActions';
 
 const MARS_PRIMARY = '#1a472a';
 const MARS_ACCENT = '#2d6a4f';
@@ -62,7 +63,7 @@ const formatDelta = (value: number, suffix = '') => {
 };
 
 export default function ReturnScene() {
-  const { totalScore, currentHealth, currentPhase, phaseScores, errors, resetGame } = useGameStore();
+  const { totalScore, currentHealth, currentPhase, phaseScores, errors, resetGame, courseSession } = useGameStore();
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
   const severitySummary = {
     critical: errors.filter((error) => error.severity === 'critical').length,
@@ -75,7 +76,9 @@ export default function ReturnScene() {
       ? { label: 'Non conforme', color: MARS_DANGER }
       : severitySummary.high > 0
         ? { label: 'Conforme con rilievi', color: MARS_ACCENT }
-        : { label: 'Conforme', color: MARS_SUCCESS };
+        : errors.length > 0
+          ? { label: 'Conforme con osservazioni', color: MARS_ACCENT }
+          : { label: 'Conforme', color: MARS_SUCCESS };
   const phaseScoreMap = new Map<GamePhase, PhaseScore>(
     phaseScores.map((phaseScore) => [phaseScore.phase, phaseScore]),
   );
@@ -160,6 +163,30 @@ export default function ReturnScene() {
                   Infrazioni rilevate
                 </span>
                 <div style={{ fontSize: '2.4rem', fontWeight: 800, color: MARS_DANGER }}>{errors.length}</div>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'left', marginBottom: '1.75rem', padding: '1.25rem', background: '#f9f7f4', border: `1px solid ${MARS_BORDER}`, borderRadius: '20px' }}>
+              <h4 style={{ margin: '0 0 0.9rem 0', color: MARS_PRIMARY, fontFamily: '"Playfair Display", serif', fontSize: '1.1rem', fontWeight: 700 }}>
+                Identificativi sessione
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.86rem', color: MARS_MUTED }}>
+                <div>
+                  <span style={{ display: 'block', marginBottom: '0.2rem' }}>Sessione</span>
+                  <strong style={{ color: MARS_TEXT }}>{courseSession.sessionId}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', marginBottom: '0.2rem' }}>Allievo</span>
+                  <strong style={{ color: MARS_TEXT }}>{courseSession.traineeName || 'n/d'}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', marginBottom: '0.2rem' }}>Docente</span>
+                  <strong style={{ color: MARS_TEXT }}>{courseSession.instructorName || 'n/d'}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', marginBottom: '0.2rem' }}>Scenario seed</span>
+                  <strong style={{ color: MARS_TEXT }}>{courseSession.scenarioSeed}</strong>
+                </div>
               </div>
             </div>
 
@@ -253,6 +280,7 @@ export default function ReturnScene() {
             >
               Fine addestramento
             </button>
+            <SessionReportActions />
           </div>
         </div>
       </Html>

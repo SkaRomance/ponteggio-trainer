@@ -24,7 +24,13 @@ Original prompt: `C:\Users\Salvatore Romano\Desktop\Personale\PROGETTI\ponteggio
 - Smoke test eseguito con il client Playwright del workflow `develop-web-game`: nessun file `errors-0.json` generato dopo l'ultimo passaggio.
 - Aggiornata la prima fase di ispezione per eliminare indizi preventivi sullo stato del pezzo: rimossi percentuale integrita, badge `OK/Danneggiato` e warning del tipo di danno prima della scelta.
 - Migliorata la resa realistica dei componenti ispezionati: difetti visivi su modello 3D e magazzino tramite ruggine, crepe, deformazioni, ossidazione, usura e parti mancanti senza color coding verde/rosso di verdetto.
+- Avviato passaggio "accreditamento/VR": aggiunti dati sessione corso obbligatori, session ID, scenario seed, export JSON/CSV, stampa report, log eventi e hook `render_game_to_text` / `advanceTime`.
+- Resa ripetibile la generazione dei difetti con seed tracciato nel report e reset reale dello stato ispezione a ogni nuova run.
+- Corrette criticita emerse dagli audit: doppia penalita in ispezione, controlli DPI basati sull'altezza dell'azione e non sulla Y avatar, ordine di smontaggio inverso reale e inventario minimo coerente con montaggio.
+- Aggiunti controlli aula/VR: fullscreen con tasto F, pausa/reset e bridge WebXR quando il browser supporta `immersive-vr`.
+- Aggiunto stato testuale accessibile della scena per screen reader e per verifiche automatiche.
 
 TODO
 - Fare una verifica visuale manuale in browser desktop/mobile: lo smoke headless e pulito lato console ma non e affidabile come controllo della resa 3D centrale.
 - Valutare in un commit successivo il code-splitting Vite: il bundle JS supera ancora il warning dei 500 kB.
+- Per un accreditamento formale servono ancora revisione legale/didattica, eventuale firma digitale/persistenza server-side delle evidenze e prove in visore VR reale.

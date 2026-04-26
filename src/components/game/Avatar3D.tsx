@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useFrame, useThree, type RootState } from '@react-three/fiber';
 import { Vector3, Group } from 'three';
 import { Box, Cylinder, Sphere, Text } from '@react-three/drei';
+import { useGameStore } from '../../stores/gameStore';
 
 interface Avatar3DProps {
   position?: [number, number, number];
@@ -17,6 +18,12 @@ export type { Avatar3DProps };
 // Animation states
 type AnimationState = 'idle' | 'walking' | 'lifting' | 'inspecting' | 'climbing';
 
+const isTypingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+};
+
 export default function Avatar3D({
   position = [0, 0, 0],
   hasHelmet = true,
@@ -26,6 +33,7 @@ export default function Avatar3D({
 }: Avatar3DProps) {
   const groupRef = useRef<Group>(null);
   const { camera } = useThree();
+  const { isPlaying, isPaused } = useGameStore();
   const [currentPos, setCurrentPos] = useState(new Vector3(...position));
   // Target position for click-to-move (future feature)
   const [animState, setAnimState] = useState<AnimationState>('idle');
@@ -86,6 +94,7 @@ export default function Avatar3D({
   // Keyboard controls with smooth movement
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isPlaying || isPaused || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
       const key = e.key.toLowerCase();
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         setKeysPressed(prev => new Set(prev).add(key));
@@ -108,11 +117,16 @@ export default function Avatar3D({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [isPaused, isPlaying]);
 
   // Movement and animation loop
   useFrame((state, delta) => {
     if (!groupRef.current) return;
+    if (!isPlaying || isPaused) {
+      if (keysPressed.size > 0) setKeysPressed(new Set());
+      applyAnimations(state);
+      return;
+    }
 
     // Calculate movement direction from keys
     let moveX = 0;

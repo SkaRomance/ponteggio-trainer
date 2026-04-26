@@ -58,15 +58,29 @@ export default function DisassemblyScene() {
     setHooked,
     assembledItems,
     pushNotice,
+    logEvent,
   } = useGameStore();
   const [removedItems, setRemovedItems] = useState<string[]>([]);
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
 
-  const handleRemove = (id: string, index: number) => {
+  const handleRemove = (id: string, targetHeight: number) => {
     // Regola Pi.M.U.S.: Smontaggio dall'alto verso il basso (ordine inverso rispetto a assembledItems)
-    const currentRemainingCount = assembledItems.length - removedItems.length;
-    // In questo modello semplificato, assumiamo che l'ultimo inserito sia il più in alto
-    const isTopItem = (assembledItems.length - index) === currentRemainingCount;
+    const remainingItems = assembledItems.filter((itemId) => !removedItems.includes(itemId));
+    const expectedTopItem = remainingItems[remainingItems.length - 1];
+    const isTopItem = id === expectedTopItem;
+
+    logEvent({
+      type: 'procedure_action',
+      phase: 'disassembly',
+      payload: {
+        action: 'remove_component',
+        componentId: id,
+        expectedTopItem,
+        targetHeight,
+        harnessed: isHarnessed,
+        hooked: isHooked,
+      },
+    });
     
     if (!isTopItem) {
       addError({
@@ -84,7 +98,7 @@ export default function DisassemblyScene() {
       return;
     }
 
-    if (avatarPosition.y > 1.8 && !isHooked) {
+    if (targetHeight > 1.8 && !isHooked) {
       addError({
         code: 'UNSAFE_DISASSEMBLY',
         severity: 'critical',
@@ -132,7 +146,11 @@ export default function DisassemblyScene() {
         if (isRemoved) return null;
 
         return (
-          <group key={id} position={[ (index % 4) * 3 - 4.5, 2, -2]} onClick={() => handleRemove(id, index)}>
+          <group
+            key={id}
+            position={[ (index % 4) * 3 - 4.5, 2 + Math.floor(index / 4) * 0.45, -2]}
+            onClick={() => handleRemove(id, 2 + Math.floor(index / 4) * 0.45)}
+          >
             <Box args={[1.5, 1.5, 1.5]}>
               <meshStandardMaterial color="#ffcc00" metalness={0.8} />
             </Box>
@@ -192,7 +210,7 @@ export default function DisassemblyScene() {
                 {assembledItems.length - removedItems.length}
               </strong>
             </div>
-            {avatarPosition.y > 1.8 && !isHooked && (
+            {assembledItems.length > removedItems.length && !isHooked && (
               <div style={{ marginTop: '1rem', padding: '0.95rem 1rem', borderRadius: '18px', border: `1px solid ${MARS_DANGER}`, background: 'rgba(220, 38, 38, 0.08)', color: MARS_DANGER, fontWeight: 700, textAlign: 'center' }}>
                 Pericolo caduta: smontaggio in quota senza ancoraggio
               </div>

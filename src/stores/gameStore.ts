@@ -35,6 +35,37 @@ export interface PhaseScore {
   bonusPoints: number;
 }
 
+export interface CourseSession {
+  sessionId: string;
+  scenarioSeed: string;
+  traineeName: string;
+  instructorName: string;
+  providerName: string;
+  courseCode: string;
+  location: string;
+  vrDeviceId: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  mode: 'demo' | 'full';
+  evidenceVersion: string;
+}
+
+export interface TrainingEvent {
+  id: string;
+  type:
+    | 'session_started'
+    | 'session_ended'
+    | 'phase_completed'
+    | 'phase_aborted'
+    | 'error_recorded'
+    | 'component_decision'
+    | 'notice_recorded'
+    | 'procedure_action';
+  phase: GamePhase;
+  timestamp: number;
+  payload: Record<string, string | number | boolean | null>;
+}
+
 interface PhaseAuditStart {
   phase: GamePhase;
   health: number;
@@ -60,6 +91,14 @@ export interface GameState {
   // Language
   locale: Locale;
   setLocale: (locale: Locale) => void;
+
+  // Course Session / Evidence
+  courseSession: CourseSession;
+  sessionRunId: number;
+  updateCourseSession: (patch: Partial<CourseSession>) => void;
+  isCourseSessionReady: () => boolean;
+  eventLog: TrainingEvent[];
+  logEvent: (event: Omit<TrainingEvent, 'id' | 'timestamp'>) => void;
   
   // Game Flow
   currentPhase: GamePhase;
@@ -155,12 +194,49 @@ const severityPenalty: Record<ErrorSeverity, number> = {
 
 const isAuditablePhase = (phase: GamePhase) => phase !== 'menu' && phase !== 'completed';
 
+const createSessionId = () => {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `MARS-PONTEGGIO-${datePart}-${randomPart}`;
+};
+
+const createScenarioSeed = () => `SEED-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+const createCourseSession = (mode: CourseSession['mode'] = 'full'): CourseSession => ({
+  sessionId: createSessionId(),
+  scenarioSeed: createScenarioSeed(),
+  traineeName: '',
+  instructorName: '',
+  providerName: '',
+  courseCode: '',
+  location: '',
+  vrDeviceId: '',
+  startedAt: null,
+  endedAt: null,
+  mode,
+  evidenceVersion: 'mars-ponteggio-evidence-v1',
+});
+
+const createTrainingEvent = (event: Omit<TrainingEvent, 'id' | 'timestamp'>): TrainingEvent => ({
+  ...event,
+  id: `event-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  timestamp: Date.now(),
+});
+
+const completeSession = (session: CourseSession): CourseSession => ({
+  ...session,
+  endedAt: session.endedAt ?? new Date().toISOString(),
+});
+
 export const useGameStore = create<GameState>((set, get) => {
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
+  const initialAccessLevel: 'free' | 'premium' = isDemoMode
+    ? 'free'
+    : (localStorage.getItem('mars_access_level') as 'free' | 'premium') || 'free';
 
   return {
     // Access Control
-    accessLevel: isDemoMode ? 'free' : (localStorage.getItem('mars_access_level') as 'free' | 'premium') || 'free',
+    accessLevel: initialAccessLevel,
     setAccessLevel: (level) => {
       if (isDemoMode) return;
       localStorage.setItem('mars_access_level', level);
@@ -174,6 +250,29 @@ export const useGameStore = create<GameState>((set, get) => {
     // Language
     locale: 'it',
     setLocale: (locale) => set({ locale }),
+
+    // Course Session / Evidence
+    courseSession: createCourseSession(isDemoMode || initialAccessLevel === 'free' ? 'demo' : 'full'),
+    sessionRunId: 0,
+    updateCourseSession: (patch) => set((state) => ({
+      courseSession: {
+        ...state.courseSession,
+        ...patch,
+      },
+    })),
+    isCourseSessionReady: () => {
+      const { courseSession } = get();
+      return Boolean(
+        courseSession.traineeName.trim() &&
+        courseSession.instructorName.trim() &&
+        courseSession.providerName.trim() &&
+        courseSession.courseCode.trim(),
+      );
+    },
+    eventLog: [],
+    logEvent: (event) => set((state) => ({
+      eventLog: [...state.eventLog, createTrainingEvent(event)],
+    })),
     
     // Game Flow
     currentPhase: 'menu',
@@ -210,17 +309,60 @@ export const useGameStore = create<GameState>((set, get) => {
           completed: true,
           bonusPoints: state.totalScore - phaseAuditStart.score,
         });
+        state.logEvent({
+          type: 'phase_completed',
+          phase: current,
+          payload: {
+            scoreDelta: state.totalScore - phaseAuditStart.score,
+            healthDelta: state.currentHealth - phaseAuditStart.health,
+            errors: phaseErrors.length,
+          },
+        });
         state.markPhaseCompleted(current);
       }
 
       if (currentIndex < phaseOrder.length - 1) {
         const next = phaseOrder[currentIndex + 1];
         if (isDemoMode && current === 'transport') {
-          set({ currentPhase: 'completed', isPlaying: false, phaseAuditStart: null });
+          set({
+            currentPhase: 'completed',
+            isPlaying: false,
+            phaseAuditStart: null,
+            courseSession: completeSession(state.courseSession),
+            eventLog: [
+              ...state.eventLog,
+              createTrainingEvent({
+                type: 'session_ended',
+                phase: current,
+                payload: {
+                  sessionId: state.courseSession.sessionId,
+                  totalScore: state.totalScore,
+                  errors: state.errors.length,
+                },
+              }),
+            ],
+          });
           return;
         }
         if (state.isPhaseLocked(next)) {
-          set({ currentPhase: 'completed', isPlaying: false, phaseAuditStart: null });
+          set({
+            currentPhase: 'completed',
+            isPlaying: false,
+            phaseAuditStart: null,
+            courseSession: completeSession(state.courseSession),
+            eventLog: [
+              ...state.eventLog,
+              createTrainingEvent({
+                type: 'session_ended',
+                phase: current,
+                payload: {
+                  sessionId: state.courseSession.sessionId,
+                  totalScore: state.totalScore,
+                  errors: state.errors.length,
+                },
+              }),
+            ],
+          });
         } else {
           set({
             currentPhase: next,
@@ -234,7 +376,24 @@ export const useGameStore = create<GameState>((set, get) => {
           });
         }
       } else {
-        set({ currentPhase: 'completed', isPlaying: false, phaseAuditStart: null });
+        set({
+          currentPhase: 'completed',
+          isPlaying: false,
+          phaseAuditStart: null,
+          courseSession: completeSession(state.courseSession),
+          eventLog: [
+            ...state.eventLog,
+            createTrainingEvent({
+              type: 'session_ended',
+              phase: current,
+              payload: {
+                sessionId: state.courseSession.sessionId,
+                totalScore: state.totalScore,
+                errors: state.errors.length,
+              },
+            }),
+          ],
+        });
       }
     },
     
@@ -268,6 +427,15 @@ export const useGameStore = create<GameState>((set, get) => {
         timestamp: Date.now(),
       };
       set((state) => ({ errors: [...state.errors, newError] }));
+      get().logEvent({
+        type: 'error_recorded',
+        phase: error.phase,
+        payload: {
+          code: error.code,
+          severity: error.severity,
+          messageKey: error.messageKey,
+        },
+      });
       get().reduceHealth(severityPenalty[error.severity]);
     },
     clearErrors: () => set({ errors: [] }),
@@ -283,6 +451,16 @@ export const useGameStore = create<GameState>((set, get) => {
       set((state) => ({
         notices: [...state.notices, newNotice].slice(-5),
       }));
+      get().logEvent({
+        type: 'notice_recorded',
+        phase: notice.phase ?? get().currentPhase,
+        payload: {
+          severity: notice.severity,
+          title: notice.title ?? '',
+          message: notice.message,
+          persistent: notice.persistent ?? false,
+        },
+      });
     },
     dismissNotice: (id) => set((state) => ({
       notices: state.notices.filter((notice) => notice.id !== id),
@@ -293,6 +471,27 @@ export const useGameStore = create<GameState>((set, get) => {
     isPlaying: false,
     isPaused: false,
     startGame: () => {
+      const previousSession = get().courseSession;
+      const nextSessionId = createSessionId();
+      const runMode: CourseSession['mode'] = isDemoMode || get().accessLevel === 'free' ? 'demo' : 'full';
+      const nextSession: CourseSession = {
+        ...previousSession,
+        sessionId: nextSessionId,
+        scenarioSeed: previousSession.scenarioSeed.trim() || createScenarioSeed(),
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+        mode: runMode,
+      };
+      const sessionStartEvent = createTrainingEvent({
+        type: 'session_started',
+        phase: 'warehouse',
+        payload: {
+          sessionId: nextSessionId,
+          mode: nextSession.mode,
+          scenarioSeed: nextSession.scenarioSeed,
+        },
+      });
+
       set({ 
         isPlaying: true, 
         isPaused: false, 
@@ -314,12 +513,71 @@ export const useGameStore = create<GameState>((set, get) => {
         unlockedPhases: ['warehouse'],
         completedPhases: [],
         notices: [],
+        eventLog: [sessionStartEvent],
         phaseAuditStart: { phase: 'warehouse', health: 100, score: 0 },
+        courseSession: nextSession,
+        sessionRunId: get().sessionRunId + 1,
       });
     },
     pauseGame: () => set({ isPaused: true }),
     resumeGame: () => set({ isPaused: false }),
-    endGame: () => set({ isPlaying: false }),
+    endGame: () => {
+      const state = get();
+      const phaseAuditStart =
+        isAuditablePhase(state.currentPhase)
+          ? state.phaseAuditStart?.phase === state.currentPhase
+            ? state.phaseAuditStart
+            : { phase: state.currentPhase, health: state.currentHealth, score: state.totalScore }
+          : null;
+      const failedPhaseScore =
+        phaseAuditStart && !state.phaseScores.some((entry) => entry.phase === state.currentPhase)
+          ? {
+              phase: state.currentPhase,
+              startHealth: phaseAuditStart.health,
+              endHealth: state.currentHealth,
+              startScore: phaseAuditStart.score,
+              endScore: state.totalScore,
+              errors: state.errors.filter((error) => error.phase === state.currentPhase),
+              completed: false,
+              bonusPoints: state.totalScore - phaseAuditStart.score,
+            }
+          : null;
+
+      set({
+        isPlaying: false,
+        courseSession: completeSession(state.courseSession),
+        phaseScores: failedPhaseScore
+          ? [...state.phaseScores, failedPhaseScore].sort(
+              (a, b) => phaseOrder.indexOf(a.phase) - phaseOrder.indexOf(b.phase),
+            )
+          : state.phaseScores,
+        eventLog: [
+          ...state.eventLog,
+          ...(failedPhaseScore
+            ? [
+                createTrainingEvent({
+                  type: 'phase_aborted',
+                  phase: state.currentPhase,
+                  payload: {
+                    scoreDelta: failedPhaseScore.endScore - failedPhaseScore.startScore,
+                    healthDelta: failedPhaseScore.endHealth - failedPhaseScore.startHealth,
+                    errors: failedPhaseScore.errors.length,
+                  },
+                }),
+              ]
+            : []),
+          createTrainingEvent({
+            type: 'session_ended',
+            phase: state.currentPhase,
+            payload: {
+              sessionId: state.courseSession.sessionId,
+              totalScore: state.totalScore,
+              errors: state.errors.length,
+            },
+          }),
+        ],
+      });
+    },
     resetGame: () => set({
       currentPhase: 'menu',
       currentHealth: 100,
@@ -341,7 +599,12 @@ export const useGameStore = create<GameState>((set, get) => {
       unlockedPhases: ['warehouse'],
       completedPhases: [],
       notices: [],
+      eventLog: [],
       phaseAuditStart: null,
+      courseSession: {
+        ...get().courseSession,
+        endedAt: get().courseSession.endedAt ?? new Date().toISOString(),
+      },
     }),
     
     // Progress

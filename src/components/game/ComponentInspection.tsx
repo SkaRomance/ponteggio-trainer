@@ -80,16 +80,12 @@ export default function ComponentInspection({ component, onDecision }: Component
     
     setPlayerChoice(choice);
     setHasDecided(true);
-    
-    const isCorrect = (choice === 'usable' && !component.isDamaged) || 
-                      (choice === 'damaged' && component.isDamaged);
-    
     setShowResult(true);
-    
-    // Delay per mostrare il risultato prima di chiudere
-    setTimeout(() => {
-      onDecision(choice, isCorrect);
-    }, 3000);
+  };
+
+  const handleContinue = () => {
+    if (!playerChoice) return;
+    onDecision(playerChoice, isCorrectDecision);
   };
 
   const damageLabel = component.damageType ? damageLabels[component.damageType] : null;
@@ -98,10 +94,10 @@ export default function ComponentInspection({ component, onDecision }: Component
 
   return (
     <div className="inspection-overlay">
-      <div className="inspection-modal expanded">
+      <div className="inspection-modal expanded" role="dialog" aria-modal="true" aria-labelledby="inspection-title">
         <div className="inspection-header">
           <div>
-            <h2>
+            <h2 id="inspection-title">
               <FormattedMessage id="inspection.title" defaultMessage="Ispezione componente" />
             </h2>
             <span className="component-name">{component.name}</span>
@@ -219,10 +215,9 @@ export default function ComponentInspection({ component, onDecision }: Component
 
             {showResult && (
               <div className="auto-close-indicator" aria-live="polite">
-                <FormattedMessage id="inspection.continuing" defaultMessage="Continuazione in corso..." />
-                <div className="progress-dots">
-                  <span>.</span><span>.</span><span>.</span>
-                </div>
+                <button type="button" className="start-btn" onClick={handleContinue}>
+                  <FormattedMessage id="inspection.continuing" defaultMessage="Continua" />
+                </button>
               </div>
             )}
           </div>

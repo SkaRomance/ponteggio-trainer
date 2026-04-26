@@ -87,14 +87,19 @@ function SnapPoint({ position, type, onSnap, active }: {
 
 export default function AssemblyScene() {
   const { 
-    addScore, addError, nextPhase, unlockPhase, pushNotice,
+    addScore, addError, nextPhase, unlockPhase, pushNotice, logEvent,
     isHarnessed, setHarnessed, isHooked, setHooked,
     assembledItems, addAssembledItem,
-    lastAssemblyStep, setLastAssemblyStep
+    lastAssemblyStep, setLastAssemblyStep,
+    loadedItems, storageLocations,
   } = useGameStore();
 
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
   const currentStep = ASSEMBLY_STEPS[lastAssemblyStep];
+  const storedUsableItems = useMemo(
+    () => loadedItems.filter((itemId) => Boolean(storageLocations[itemId])),
+    [loadedItems, storageLocations],
+  );
 
   // Generazione dinamica snap points per il ponteggio
   const snapPoints = useMemo(() => {
@@ -114,8 +119,20 @@ export default function AssemblyScene() {
     return points;
   }, [lastAssemblyStep, currentStep]);
 
-  const handleSnap = (type: string) => {
-    const isAtHeight = avatarPosition.y > 1.8;
+  const handleSnap = (type: string, targetHeight: number) => {
+    const isAtHeight = targetHeight > 1.8;
+    logEvent({
+      type: 'procedure_action',
+      phase: 'assembly',
+      payload: {
+        action: 'snap_component',
+        requestedType: type,
+        expectedType: currentStep.id,
+        targetHeight,
+        harnessed: isHarnessed,
+        hooked: isHooked,
+      },
+    });
     
     // Controllo DPI Critico
     if (isAtHeight && (!isHarnessed || !isHooked)) {
@@ -148,6 +165,27 @@ export default function AssemblyScene() {
         phase: 'assembly',
       });
       return;
+    }
+
+    if (type !== 'ancoraggio') {
+      const availableOfType = storedUsableItems.filter((id) => id.startsWith(type)).length;
+      const alreadyUsedOfType = assembledItems.filter((id: string) => id.startsWith(type)).length;
+
+      if (alreadyUsedOfType >= availableOfType) {
+        addError({
+          code: 'INVENTORY_NOT_AVAILABLE',
+          severity: 'high',
+          messageKey: 'error.inventoryMissing',
+          phase: 'assembly',
+        });
+        pushNotice({
+          severity: 'error',
+          title: 'Inventario non disponibile',
+          message: 'Puoi montare solo componenti ispezionati, trasportati e stoccati correttamente.',
+          phase: 'assembly',
+        });
+        return;
+      }
     }
 
     addAssembledItem(`${type}-${assembledItems.length}`);
@@ -198,7 +236,7 @@ export default function AssemblyScene() {
           key={`${p.type}-${i}`} 
           position={p.pos} 
           type={p.type} 
-          onSnap={() => handleSnap(p.type)} 
+          onSnap={() => handleSnap(p.type, p.pos[1])}
           active={p.type === currentStep.id} 
         />
       ))}
@@ -258,7 +296,7 @@ export default function AssemblyScene() {
               </div>
             </div>
 
-            {avatarPosition.y > 1.8 && !isHooked && (
+            {lastAssemblyStep >= 2 && !isHooked && (
               <div style={{ marginTop: '1rem', padding: '0.95rem 1rem', borderRadius: '18px', border: `1px solid ${MARS_DANGER}`, background: 'rgba(220, 38, 38, 0.08)', color: MARS_DANGER, fontWeight: 700, textAlign: 'center' }}>
                 Pericolo caduta: operatore non ancorato
               </div>

@@ -68,7 +68,8 @@
 body {
   background: var(--mars-cream);
   color: var(--mars-dark);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   letter-spacing: normal;
 }
 
@@ -79,7 +80,8 @@ body {
 
 .game-container {
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   background:
@@ -556,6 +558,13 @@ body {
   text-decoration: none;
 }
 
+.start-btn:disabled,
+.runtime-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .start-btn,
 .btn-watch,
 .btn-continue {
@@ -582,6 +591,12 @@ body {
   box-shadow: var(--shadow-card-hover);
 }
 
+.start-btn:disabled:hover,
+.runtime-btn:disabled:hover {
+  transform: none;
+  box-shadow: var(--shadow-card);
+}
+
 .btn-watch:disabled {
   opacity: 0.6;
   cursor: wait;
@@ -599,6 +614,99 @@ body {
   font-size: 0.8rem;
   line-height: 1.6;
   color: var(--mars-text-secondary);
+}
+
+.course-session-panel {
+  position: relative;
+  z-index: 1;
+  margin: 1.75rem 0 2rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(26, 71, 42, 0.16);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(232, 245, 233, 0.7), rgba(255, 255, 255, 0.92));
+  box-shadow: var(--shadow-card);
+}
+
+.course-session-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.course-session-header h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  color: var(--mars-dark);
+}
+
+.course-session-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 102, 0, 0.26);
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.8rem;
+  color: #8a5a00;
+  background: rgba(255, 215, 0, 0.14);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.course-session-status.ready {
+  border-color: rgba(22, 163, 74, 0.28);
+  color: var(--safety-green);
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.course-session-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.course-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.course-field span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mars-text-secondary);
+}
+
+.course-field strong {
+  color: var(--safety-red);
+}
+
+.course-field input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--mars-border);
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+  color: var(--mars-dark);
+  background: rgba(255, 255, 255, 0.92);
+  font: inherit;
+}
+
+.course-session-note,
+.course-required-note {
+  margin-top: 1rem;
+  color: var(--mars-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.course-required-note {
+  color: var(--safety-red);
+  font-weight: 700;
 }
 
 .overlay-container,
@@ -806,6 +914,61 @@ body {
   display: grid;
   gap: 0.75rem;
   z-index: 1200;
+}
+
+.runtime-controls {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  max-width: min(520px, calc(100% - 3rem));
+  z-index: 80;
+}
+
+.scene-a11y-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.runtime-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 42px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgba(26, 71, 42, 0.22);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--mars-green);
+  box-shadow: var(--shadow-card);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.runtime-btn.danger {
+  border-color: rgba(220, 38, 38, 0.26);
+  color: var(--safety-red);
+}
+
+.session-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 .notice-card {
@@ -1630,6 +1793,7 @@ select:focus-visible {
   }
 
   .menu-stats,
+  .course-session-grid,
   .phases-grid,
   .demo-end-summary,
   .buttons-row {
@@ -1652,5 +1816,50 @@ select:focus-visible {
 
   .health-bar-container {
     width: 100%;
+  }
+
+  .runtime-controls {
+    position: static;
+    justify-content: stretch;
+    margin: 0 1rem 1rem;
+    max-width: none;
+  }
+
+  .runtime-btn {
+    flex: 1 1 150px;
+  }
+}
+
+@media print {
+  body {
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  .game-header,
+  .phase-nav,
+  .scene-container,
+  .instructions-panel,
+  .phase-briefing,
+  .notice-center,
+  .runtime-controls,
+  .start-btn,
+  .btn-secondary {
+    display: none !important;
+  }
+
+  .overlay-container,
+  .demo-end-overlay {
+    position: static;
+    display: block;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .overlay-content,
+  .demo-end-content {
+    max-width: none;
+    border: none;
+    box-shadow: none;
   }
 }

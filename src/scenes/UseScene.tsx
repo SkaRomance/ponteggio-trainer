@@ -63,15 +63,28 @@ export default function UseScene() {
     isHooked,
     setHooked,
     pushNotice,
+    logEvent,
   } = useGameStore();
   const [identified, setIdentified] = useState<string[]>([]);
   const [cartelloPosto, setCartelloPosto] = useState(false);
   const [avatarPosition, setAvatarPosition] = useState(new Vector3(0, 0, 8));
 
-  const handleIdentify = (id: string) => {
+  const handleIdentify = (id: string, targetHeight: number) => {
     if (identified.includes(id)) return;
+
+    logEvent({
+      type: 'procedure_action',
+      phase: 'use',
+      payload: {
+        action: 'identify_anomaly',
+        targetId: id,
+        targetHeight,
+        harnessed: isHarnessed,
+        hooked: isHooked,
+      },
+    });
     
-    if (avatarPosition.y > 1.8 && !isHooked) {
+    if (targetHeight > 1.8 && !isHooked) {
       addError({
         code: 'INSPECTION_UNSAFE',
         severity: 'high',
@@ -142,7 +155,11 @@ export default function UseScene() {
 
       {/* Anomalie */}
       {ANOMALIES.map((anomaly) => (
-        <group key={anomaly.id} position={anomaly.pos as [number, number, number]} onClick={() => handleIdentify(anomaly.id)}>
+        <group
+          key={anomaly.id}
+          position={anomaly.pos as [number, number, number]}
+          onClick={() => handleIdentify(anomaly.id, anomaly.pos[1])}
+        >
           <mesh>
             <sphereGeometry args={[0.4, 16, 16]} />
             <meshStandardMaterial 
@@ -158,7 +175,21 @@ export default function UseScene() {
       ))}
 
       {/* Cartello Agibilità */}
-      <group position={[-6, 1.5, -1]} onClick={() => setCartelloPosto(true)}>
+      <group
+        position={[-6, 1.5, -1]}
+        onClick={() => {
+          setCartelloPosto(true);
+          logEvent({
+            type: 'procedure_action',
+            phase: 'use',
+            payload: {
+              action: 'post_scaffold_signage',
+              harnessed: isHarnessed,
+              hooked: isHooked,
+            },
+          });
+        }}
+      >
         <Box args={[0.8, 1, 0.1]}>
           <meshStandardMaterial color={cartelloPosto ? "white" : "#222"} />
         </Box>
@@ -209,7 +240,7 @@ export default function UseScene() {
                 {identified.length} / {ANOMALIES.length}
               </strong>
             </div>
-            {avatarPosition.y > 1.8 && !isHooked && (
+            {ANOMALIES.some((anomaly) => anomaly.pos[1] > 1.8 && !identified.includes(anomaly.id)) && !isHooked && (
               <div style={{ marginTop: '1rem', padding: '0.95rem 1rem', borderRadius: '18px', border: `1px solid ${MARS_DANGER}`, background: 'rgba(220, 38, 38, 0.08)', color: MARS_DANGER, fontWeight: 700, textAlign: 'center' }}>
                 Pericolo caduta: ispezione in quota senza ancoraggio
               </div>

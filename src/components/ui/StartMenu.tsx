@@ -1,9 +1,11 @@
 import { useGameStore } from '../../stores/gameStore';
 import type { GamePhase } from '../../stores/gameStore';
 import { Lock, ShoppingCart } from 'lucide-react';
+import CourseSessionPanel from './CourseSessionPanel';
 
 export default function StartMenu() {
-  const { startGame, accessLevel, isPhaseLocked, setAccessLevel } = useGameStore();
+  const { startGame, accessLevel, isPhaseLocked, setAccessLevel, isCourseSessionReady } = useGameStore();
+  const sessionReady = isCourseSessionReady();
 
   const phases: { id: GamePhase; label: string; icon: string }[] = [
     { id: 'warehouse', label: 'Ispezione iniziale', icon: '🔍' },
@@ -55,6 +57,8 @@ export default function StartMenu() {
           </div>
         </div>
 
+        <CourseSessionPanel />
+
         <ul className="phases-grid" aria-label="Fasi del percorso">
           {phases.map((phase) => {
             const locked = isPhaseLocked(phase.id);
@@ -85,6 +89,8 @@ export default function StartMenu() {
             type="button"
             className="start-btn" 
             onClick={startGame}
+            disabled={!sessionReady}
+            aria-describedby={!sessionReady ? 'session-required-note' : undefined}
           >
             {accessLevel === 'free' ? 'Avvia la demo' : 'Avvia la simulazione'}
           </button>
@@ -100,6 +106,12 @@ export default function StartMenu() {
             </button>
           )}
         </div>
+
+        {!sessionReady && (
+          <p className="course-required-note" id="session-required-note">
+            Completa almeno allievo, docente, soggetto formatore e codice corso prima di avviare una sessione tracciata.
+          </p>
+        )}
 
         <p className="menu-legal">
           Piattaforma dimostrativa Mars Compliance S.r.l. Tutti i diritti riservati © 2026.

@@ -15,10 +15,15 @@ import PhaseSelector from './components/ui/PhaseSelector';
 import LanguageSelector from './components/ui/LanguageSelector';
 import PhaseBriefing from './components/ui/PhaseBriefing';
 import NoticeCenter from './components/ui/NoticeCenter';
+import AccessibleSceneStatus from './components/ui/AccessibleSceneStatus';
 import ControlsHelp from './components/game/ControlsHelp';
 import VideoTutorial, { TutorialMenu } from './components/game/VideoTutorial';
 import ComponentInspection from './components/game/ComponentInspection';
 import DemoEndOverlay from './components/ui/DemoEndOverlay';
+import RuntimeBridge from './components/game/RuntimeBridge';
+import XRSessionBridge from './components/game/XRSessionBridge';
+import TrainingRuntimeControls from './components/game/TrainingRuntimeControls';
+import SessionReportActions from './components/ui/SessionReportActions';
 
 // Scenes
 import WarehouseScene from './scenes/WarehouseScene';
@@ -65,6 +70,7 @@ function App() {
   if (currentPhase === 'menu') {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+        <RuntimeBridge />
         <StartMenu />
       </IntlProvider>
     );
@@ -74,6 +80,7 @@ function App() {
   if (isGameOver) {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+        <RuntimeBridge />
         <div className="overlay-container">
           <div className="overlay-content" data-variant="danger">
             <h1>
@@ -88,6 +95,7 @@ function App() {
             <button type="button" onClick={resetGame} className="start-btn">
               <FormattedMessage id="game.restart" defaultMessage="Ricomincia" />
             </button>
+            <SessionReportActions />
           </div>
         </div>
       </IntlProvider>
@@ -98,6 +106,7 @@ function App() {
   if (currentPhase === 'completed') {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+        <RuntimeBridge />
         <div className="overlay-container">
           <div className="overlay-content">
             <h1>
@@ -112,6 +121,7 @@ function App() {
             <button type="button" onClick={resetGame} className="start-btn">
               <FormattedMessage id="game.restart" defaultMessage="Torna al menu" />
             </button>
+            <SessionReportActions />
           </div>
         </div>
         <DemoEndOverlay />
@@ -121,6 +131,7 @@ function App() {
 
   return (
     <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
+      <RuntimeBridge />
       <div className="game-container" dir={getDirection(locale)}>
         {/* Header UI */}
         <header className="game-header">
@@ -174,7 +185,13 @@ function App() {
 
         {/* 3D Scene */}
         <div className="scene-container">
-          <Canvas shadows camera={{ position: [0, 5, 10], fov: 50 }}>
+          <Canvas
+            shadows
+            camera={{ position: [0, 5, 10], fov: 50 }}
+            onCreated={({ gl }) => {
+              gl.xr.enabled = true;
+            }}
+          >
             <PerspectiveCamera makeDefault position={[0, 5, 10]} />
             <OrbitControls
               enablePan={true}
@@ -193,6 +210,7 @@ function App() {
               shadow-mapSize-height={2048}
             />
             <Environment preset="city" />
+            <XRSessionBridge />
 
             <Suspense fallback={null}>
               {currentPhase === 'warehouse' && <WarehouseScene inspection={inspection} />}
@@ -219,6 +237,11 @@ function App() {
 
         <PhaseBriefing />
         <NoticeCenter />
+        <AccessibleSceneStatus
+          inspectedItemsCount={inspection.inspectedItems.size}
+          nearbyItem={inspection.nearbyItem}
+        />
+        <TrainingRuntimeControls />
 
         {/* Tutorial Menu */}
         {showTutorialMenu && (

@@ -1,10 +1,11 @@
 import { useGameStore } from '../../stores/gameStore';
 import { Trophy } from 'lucide-react';
+import SessionReportActions from './SessionReportActions';
 
 export default function DemoEndOverlay() {
   const { totalScore, errors, resetGame } = useGameStore();
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
-  const hasCriticalErrors = errors.length > 0;
+  const hasErrors = errors.length > 0;
 
   if (!isDemoMode) return null;
 
@@ -16,7 +17,7 @@ export default function DemoEndOverlay() {
           Report demo
         </div>
 
-        <div className={`score-circle${hasCriticalErrors ? ' danger' : ''}`} aria-hidden="true">
+        <div className={`score-circle${hasErrors ? ' danger' : ''}`} aria-hidden="true">
           <span className="score-number">{totalScore}</span>
         </div>
 
@@ -35,12 +36,14 @@ export default function DemoEndOverlay() {
             <div className="menu-stat-label">Infrazioni rilevate</div>
           </div>
           <div>
-            <div className="menu-stat-value">{hasCriticalErrors ? 'Da rivedere' : 'Conforme'}</div>
+            <div className="menu-stat-value">{hasErrors ? 'Con osservazioni' : 'Conforme'}</div>
             <div className="menu-stat-label">Esito demo</div>
           </div>
         </div>
 
         <div className="tutorial-panel-footer">
+          <SessionReportActions />
+
           <a
             href="https://marscompliance.com/soluzioni"
             target="_blank"
@@ -60,7 +63,7 @@ export default function DemoEndOverlay() {
         </div>
 
         <p className="menu-legal">
-          Conforme ai protocolli di sicurezza Mars Compliance.
+          Report simulativo esportabile per revisione del docente e allegazione al fascicolo corso.
         </p>
       </div>
     </div>

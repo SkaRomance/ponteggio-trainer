@@ -87,7 +87,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'inspection.whyDamaged': 'Questo componente presenta {damage} e non è sicuro da utilizzare.',
     'inspection.shouldReject': 'Questo componente è danneggiato e dovrebbe essere scartato.',
     'inspection.shouldAccept': 'Questo componente è integro e può essere utilizzato.',
-    'inspection.continuing': 'Continuazione in corso...',
+    'inspection.continuing': 'Continua',
     'inspection.loaded': '✓ Componente caricato sul mezzo',
     'menu.start': 'Inizia il Corso',
     'game.completed.title': 'Corso Completato!',
