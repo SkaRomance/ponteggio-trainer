@@ -34,6 +34,42 @@ const damageLabels: Record<NonNullable<InspectionData['damageType']>, string> = 
   ossidazione_contatti: 'ossidazione dei contatti',
 };
 
+const inspectionChecklist: Partial<Record<InspectionData['type'], string[]>> = {
+  basetta: [
+    'Controlla piastra, ghiera e filettatura da piu angolazioni.',
+    'Verifica che non ci siano depositi, corrosione o deformazioni sulle zone di appoggio.',
+  ],
+  telaio: [
+    'Osserva verticalita dei montanti e continuita delle saldature.',
+    'Controlla i nodi tra montante e traverso, dove le cricche sono piu probabili.',
+  ],
+  impalcato: [
+    'Ruota il piano e controlla ganci, bordi e superficie antiscivolo.',
+    'Cerca deformazioni locali, usura della bugnatura o zone con appoggio irregolare.',
+  ],
+  impalcato_botola: [
+    'Controlla telaio, ganci e battuta della botola.',
+    'Verifica che superficie e punti di appoggio siano leggibili da ogni lato.',
+  ],
+  corrente: ['Controlla rettilineita del tubo, estremita e punti di aggancio.'],
+  traverso: ['Controlla rettilineita del tubo, estremita e punti di aggancio.'],
+  diagonale: ['Controlla piegature, schiacciamenti e continuita del tubo diagonale.'],
+  parapetto: ['Controlla continuita del tubo e punti di fissaggio del parapetto.'],
+  fermapiede: ['Osserva fibra del legno, spigoli, fessure e zone scurite.'],
+  tavola_appoggio: ['Osserva fibra del legno, spigoli, fessure e zone scurite.'],
+  mantovana: ['Controlla superficie, bordo inclinato e fissaggi della protezione.'],
+  scaletta: ['Controlla pioli, montanti laterali e dispositivi di blocco.'],
+  cancelletto: ['Controlla cerniere, battuta e dispositivo di chiusura.'],
+  messa_a_terra: ['Controlla conduttore, morsetti e qualita dei punti di contatto.'],
+  palina_terra: ['Controlla asta, conduttore e qualita dei punti di contatto.'],
+};
+
+const getChecklist = (component: InspectionData) =>
+  inspectionChecklist[component.type] ?? [
+    'Ruota il modello e controlla superfici, estremita e punti di connessione.',
+    'La decisione va presa solo dopo il confronto visivo completo.',
+  ];
+
 export default function ComponentInspection({ component, onDecision }: ComponentInspectionProps) {
   const [showResult, setShowResult] = useState(false);
   const [playerChoice, setPlayerChoice] = useState<'usable' | 'damaged' | null>(null);
@@ -58,6 +94,7 @@ export default function ComponentInspection({ component, onDecision }: Component
 
   const damageLabel = component.damageType ? damageLabels[component.damageType] : null;
   const isCorrectDecision = playerChoice === (component.isDamaged ? 'damaged' : 'usable');
+  const checklist = getChecklist(component);
 
   return (
     <div className="inspection-overlay">
@@ -85,39 +122,17 @@ export default function ComponentInspection({ component, onDecision }: Component
                 </span>
                 <span className="detail-value">{component.name}</span>
               </div>
-              
-              <div className="detail-row">
+
+              <div className="inspection-checklist">
                 <span className="detail-label">
-                  <FormattedMessage id="inspection.integrity" defaultMessage="Integrità:" />
+                  <FormattedMessage id="inspection.visualChecklist" defaultMessage="Controllo visivo:" />
                 </span>
-                <div className="integrity-bar">
-                  <div 
-                    className={`integrity-fill ${component.integrity < 50 ? 'low' : component.integrity < 80 ? 'medium' : 'high'}`}
-                    style={{ width: `${component.integrity}%` }}
-                  />
-                  <span className="integrity-text">{component.integrity}%</span>
-                </div>
+                <ul>
+                  {checklist.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
               </div>
-
-              {component.damageDescription && (
-                <div className={`damage-description ${component.isDamaged ? 'has-damage' : 'no-damage'}`}>
-                  <p>
-                    <strong>
-                      <FormattedMessage id="inspection.observation" defaultMessage="Osservazione:" />
-                    </strong>
-                  </p>
-                  <p>{component.damageDescription}</p>
-                </div>
-              )}
-
-              {component.isDamaged && (
-                <div className="damage-warning-box" role="note">
-                  <span className="warning-icon" aria-hidden="true">⚠️</span>
-                  <span className="warning-text">
-                    {damageLabel}
-                  </span>
-                </div>
-              )}
             </div>
 
             {showResult && (

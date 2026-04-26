@@ -7,7 +7,6 @@ import type { InspectionData } from '../components/game/ComponentInspection';
 
 const MARS_PRIMARY = '#1a472a';
 const MARS_ACCENT = '#2d6a4f';
-const MARS_SUCCESS = '#16A34A';
 const MARS_MUTED = '#555555';
 
 interface ScaffoldingComponentProps {
@@ -16,11 +15,64 @@ interface ScaffoldingComponentProps {
   isSelected: boolean;
   isInspected: boolean;
   isNearby: boolean;
-  type: string;
+  component: InspectionData;
 }
 
 // Visualizzazione migliorata per i componenti (Industrial Style)
-function WarehouseComponent({ position, onClick, isSelected, isInspected, isNearby, type }: ScaffoldingComponentProps) {
+function WarehouseDamageMarks({ component }: { component: InspectionData }) {
+  if (!component.isDamaged) return null;
+
+  const rustColor = '#8a4b27';
+  const darkMark = '#242424';
+
+  if (component.damageType === 'marcescenza') {
+    return (
+      <>
+        <Box args={[0.45, 0.04, 0.16]} position={[0.32, 0.14, 0.04]}>
+          <meshStandardMaterial color={darkMark} roughness={1} />
+        </Box>
+        <Box args={[0.04, 0.05, 0.72]} position={[-0.38, 0.16, 0]} rotation={[0, 0.65, 0]}>
+          <meshStandardMaterial color={darkMark} roughness={1} />
+        </Box>
+      </>
+    );
+  }
+
+  if (component.damageType === 'ossidazione_contatti' || component.damageType === 'corrosione') {
+    return (
+      <>
+        <Box args={[0.18, 0.035, 0.16]} position={[0.24, 0.16, 0.22]}>
+          <meshStandardMaterial color={component.damageType === 'ossidazione_contatti' ? '#4f8f78' : rustColor} roughness={1} />
+        </Box>
+        <Box args={[0.14, 0.035, 0.2]} position={[-0.26, 0.12, -0.18]}>
+          <meshStandardMaterial color={rustColor} roughness={1} />
+        </Box>
+      </>
+    );
+  }
+
+  if (component.damageType === 'mancanza_sicura' || component.damageType === 'mancanza_fermi') {
+    return (
+      <Box args={[0.18, 0.08, 0.18]} position={[0.42, 0.48, 0.1]} rotation={[0, 0, 0.25]}>
+        <meshStandardMaterial color={darkMark} roughness={0.9} />
+      </Box>
+    );
+  }
+
+  return (
+    <>
+      <Box args={[0.4, 0.04, 0.08]} position={[0.22, 0.22, 0.18]} rotation={[0, 0, 0.4]}>
+        <meshStandardMaterial color={darkMark} roughness={1} />
+      </Box>
+      <Box args={[0.2, 0.04, 0.12]} position={[-0.28, 0.16, -0.18]}>
+        <meshStandardMaterial color={rustColor} roughness={1} />
+      </Box>
+    </>
+  );
+}
+
+function WarehouseComponent({ position, onClick, isSelected, isInspected, isNearby, component }: ScaffoldingComponentProps) {
+  const { type } = component;
   const baseColor = useMemo(() => {
     switch (type) {
       case 'basetta': return '#555';
@@ -38,13 +90,17 @@ function WarehouseComponent({ position, onClick, isSelected, isInspected, isNear
     }
   }, [type]);
 
-  const color = isInspected ? '#00ff00' : (isSelected ? '#ffcc00' : isNearby ? '#00ffff' : baseColor);
+  const color = isSelected ? '#ffcc00' : isNearby ? '#d6c178' : baseColor;
+  const deformationRotation: [number, number, number] =
+    component.damageType === 'deformazione' || component.damageType === 'piegatura'
+      ? [0, 0, 0.08]
+      : [0, 0, 0];
 
   return (
     <group position={position} onClick={onClick}>
       <Float speed={isSelected ? 5 : 0} rotationIntensity={0.2} floatIntensity={0.2}>
         {/* Rappresentazione semplificata ma tecnica */}
-        <mesh castShadow receiveShadow>
+        <mesh castShadow receiveShadow rotation={deformationRotation}>
           {type === 'basetta' && <Box args={[0.6, 0.1, 0.6]} />}
           {type === 'telaio' && <Box args={[1, 2, 0.1]} />}
           {type === 'impalcato' && <Box args={[1.5, 0.05, 0.5]} />}
@@ -65,10 +121,11 @@ function WarehouseComponent({ position, onClick, isSelected, isInspected, isNear
             emissive={isSelected ? '#ffcc00' : '#000'}
             emissiveIntensity={isSelected ? 0.5 : 0}
           />
+          <WarehouseDamageMarks component={component} />
         </mesh>
 
         {isInspected && (
-          <Text position={[0, 1.2, 0]} fontSize={0.2} color={MARS_SUCCESS}>✓ OK</Text>
+          <Text position={[0, 1.2, 0]} fontSize={0.18} color={MARS_ACCENT}>VERIFICATO</Text>
         )}
 
         {isNearby && !isInspected && (
@@ -234,7 +291,6 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
 
       {/* Renderizzazione procedurale di TUTTI i componenti dello store */}
       {Object.keys(componentData).map((id) => {
-        const type = id.split('-')[0];
         return (
           <WarehouseComponent
             key={id}
@@ -243,7 +299,7 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
             isSelected={selectedItem === id}
             isInspected={inspectedItems.has(id)}
             isNearby={nearbyItem === id}
-            type={type}
+            component={componentData[id]}
           />
         );
       })}

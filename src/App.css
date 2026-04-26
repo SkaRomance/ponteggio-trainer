@@ -1260,6 +1260,25 @@ body {
   color: var(--mars-dark);
 }
 
+.inspection-checklist {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--mars-border);
+}
+
+.inspection-checklist ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.65rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--mars-text-secondary);
+  line-height: 1.45;
+}
+
+.inspection-checklist li::marker {
+  color: var(--mars-green);
+}
+
 .integrity-bar {
   position: relative;
   height: 12px;

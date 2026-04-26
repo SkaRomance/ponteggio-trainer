@@ -78,6 +78,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'inspection.type': 'Tipo:',
     'inspection.integrity': 'Integrità:',
     'inspection.observation': 'Osservazione:',
+    'inspection.visualChecklist': 'Controllo visivo:',
     'inspection.decisionPrompt': 'Qual è la tua valutazione? Il componente è utilizzabile?',
     'inspection.usable': 'Utilizzabile',
     'inspection.damaged': 'Danneggiato',

@@ -22,6 +22,8 @@ Original prompt: `C:\Users\Salvatore Romano\Desktop\Personale\PROGETTI\ponteggio
 - Bloccata la navigazione manuale delle fasi durante una run attiva per preservare coerenza di audit e scoring.
 - Esteso il perimetro demo fino alla fase `transport`, lasciando bloccate le fasi successive.
 - Smoke test eseguito con il client Playwright del workflow `develop-web-game`: nessun file `errors-0.json` generato dopo l'ultimo passaggio.
+- Aggiornata la prima fase di ispezione per eliminare indizi preventivi sullo stato del pezzo: rimossi percentuale integrita, badge `OK/Danneggiato` e warning del tipo di danno prima della scelta.
+- Migliorata la resa realistica dei componenti ispezionati: difetti visivi su modello 3D e magazzino tramite ruggine, crepe, deformazioni, ossidazione, usura e parti mancanti senza color coding verde/rosso di verdetto.
 
 TODO
 - Fare una verifica visuale manuale in browser desktop/mobile: lo smoke headless e pulito lato console ma non e affidabile come controllo della resa 3D centrale.
