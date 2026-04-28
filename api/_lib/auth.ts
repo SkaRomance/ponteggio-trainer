@@ -515,7 +515,10 @@ const resolveAccountForLogin = async (
   return toAuthAccountRecord(bootstrapAccount);
 };
 
-const resolveAccountFromToken = async (payload: SessionTokenPayload) => {
+const resolveAccountFromToken = async (
+  payload: SessionTokenPayload,
+  bootstrapAccounts: BootstrapAccount[],
+) => {
   if (isDatabaseConfigured()) {
     try {
       if (!payload.sessionId) {
@@ -550,7 +553,7 @@ const resolveAccountFromToken = async (payload: SessionTokenPayload) => {
     }
   }
 
-  const bootstrapAccount = findBootstrapAccountByEmail(config.accounts, payload.email);
+  const bootstrapAccount = findBootstrapAccountByEmail(bootstrapAccounts, payload.email);
   if (
     bootstrapAccount &&
     payload.userId === bootstrapAccount.userId &&
@@ -603,7 +606,7 @@ export const getAccessResponseForRequest = async (request: Request) => {
     };
   }
 
-  const account = await resolveAccountFromToken(payload);
+  const account = await resolveAccountFromToken(payload, config.accounts);
   if (!account) {
     return {
       configured: true,
