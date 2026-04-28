@@ -1,4 +1,4 @@
-import { clearSessionCookie, json } from '../_lib/auth.js';
+import { closeAuthenticatedSession, json } from '../_lib/auth.js';
 
 export const config = {
   runtime: 'edge',
@@ -9,12 +9,14 @@ export default async function handler(request: Request) {
     return json({ message: 'Metodo non consentito.' }, { status: 405 });
   }
 
+  const expiredCookie = await closeAuthenticatedSession(request);
+
   return json(
     { message: 'Sessione chiusa.' },
     {
       status: 200,
       headers: {
-        'Set-Cookie': clearSessionCookie(),
+        'Set-Cookie': expiredCookie,
       },
     },
   );

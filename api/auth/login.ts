@@ -22,7 +22,7 @@ export default async function handler(request: Request) {
     return json({ message: 'Email e password sono obbligatorie.' }, { status: 400 });
   }
 
-  const result = await authenticateCredentials(email, password);
+  const result = await authenticateCredentials(request, email, password);
   return json(
     { message: result.message },
     {

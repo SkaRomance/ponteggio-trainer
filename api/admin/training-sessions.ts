@@ -1,5 +1,5 @@
 import { getAccessResponseForRequest, json } from '../_lib/auth.js';
-import { isDatabaseConfigured, listAdminSessions } from '../_lib/db.js';
+import { isDatabaseConfigured, listAdminSessions, recordAuditEvent } from '../_lib/db.js';
 
 export const config = {
   runtime: 'edge',
@@ -27,6 +27,16 @@ export default async function handler(request: Request) {
   }
 
   const sessions = await listAdminSessions();
+  await recordAuditEvent({
+    actorUserId: accessResponse.identity.userId,
+    organizationId: null,
+    action: 'admin.sessions.read',
+    objectType: 'training_session',
+    objectId: null,
+    details: {
+      resultCount: sessions.length,
+    },
+  }).catch(() => {});
   return json(
     {
       sessions,

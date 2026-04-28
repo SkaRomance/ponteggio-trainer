@@ -34,3 +34,19 @@ TODO
 - Fare una verifica visuale manuale in browser desktop/mobile: lo smoke headless e pulito lato console ma non e affidabile come controllo della resa 3D centrale.
 - Valutare in un commit successivo il code-splitting Vite: il bundle JS supera ancora il warning dei 500 kB.
 - Per un accreditamento formale servono ancora revisione legale/didattica, eventuale firma digitale/persistenza server-side delle evidenze e prove in visore VR reale.
+
+Next wave proposed (2026-04-28)
+- Portare auth e licenze da bootstrap env-driven a modello DB-first con bootstrap usato solo come seed iniziale o recovery path.
+- Introdurre hardening auth: `bcrypt`/`argon2id`, rate limiting login, audit log successo/fallimento, invalidazione coerente di account/licenze revocati.
+- Implementare control plane admin: ricerca tenant, emissione/rinnovo/revoca licenze, visione sessioni cross-tenant e storico termini.
+- Aggiungere area cliente/docente con archivio tenant, dettagli sessione ed esposizione chiara di scadenze, updates e stato evidenza.
+- Pianificazione dettagliata versionata in `docs/wave-03-platform-ops-plan.md`.
+
+2026-04-28 - Sprint 1 Wave 3
+- Rifattorizzato l auth helper verso modello DB-first incrementale con fallback bootstrap solo per seed o compatibilita.
+- Introdotto hashing password `pbkdf2-sha256` con upgrade automatico da hash legacy SHA-256 al primo login valido.
+- Aggiunte sessioni auth revocabili lato server e logout con revoca best-effort quando il backend auth e disponibile.
+- Aggiunto rate limiting login con storage DB quando presente e fallback process-local in assenza del nuovo schema.
+- Esteso lo schema logico con `auth_accounts`, `auth_sessions`, `auth_rate_limits` e indice `LOWER(email)`.
+- Aggiunto audit log per `auth.login.success`, `auth.login.failure`, `auth.login.rate_limited`, `auth.logout` e lettura archivio admin.
+- Aggiornati `.env.example`, `README.md` e `scripts/hash-password.mjs` per il nuovo formato hash e le env di hardening.

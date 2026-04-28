@@ -19,6 +19,52 @@ CREATE TABLE IF NOT EXISTS training.users (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uidx
+  ON training.users (LOWER(email));
+
+CREATE TABLE IF NOT EXISTS training.auth_accounts (
+  user_id text PRIMARY KEY REFERENCES training.users (id) ON DELETE CASCADE,
+  password_hash text NOT NULL,
+  password_algorithm text NOT NULL CHECK (password_algorithm IN ('legacy-sha256', 'pbkdf2-sha256')),
+  auth_source text NOT NULL DEFAULT 'database' CHECK (auth_source IN ('bootstrap', 'database')),
+  active boolean NOT NULL DEFAULT true,
+  password_updated_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS auth_accounts_active_idx
+  ON training.auth_accounts (active, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS training.auth_sessions (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES training.users (id) ON DELETE CASCADE,
+  organization_id text REFERENCES training.organizations (id) ON DELETE SET NULL,
+  issued_role text NOT NULL CHECK (issued_role IN ('customer', 'instructor', 'admin')),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS auth_sessions_user_idx
+  ON training.auth_sessions (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS auth_sessions_active_idx
+  ON training.auth_sessions (expires_at, revoked_at);
+
+CREATE TABLE IF NOT EXISTS training.auth_rate_limits (
+  bucket_key text PRIMARY KEY,
+  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  window_started_at timestamptz NOT NULL,
+  blocked_until timestamptz,
+  last_attempt_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS auth_rate_limits_blocked_idx
+  ON training.auth_rate_limits (blocked_until);
+
 CREATE TABLE IF NOT EXISTS training.organization_memberships (
   organization_id text NOT NULL REFERENCES training.organizations (id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES training.users (id) ON DELETE CASCADE,

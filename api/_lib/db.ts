@@ -4,7 +4,11 @@ import {
   type AuthIdentity,
   type LicenseEntitlement,
 } from '../../src/models/accessControl.js';
-import type { BootstrapAccount } from '../../src/models/bootstrapAccount.js';
+import type {
+  AuthAccountRecord,
+  BootstrapAccount,
+  PasswordAlgorithm,
+} from '../../src/models/bootstrapAccount.js';
 import type {
   DraftSessionPayload,
   FinalizeSessionPayload,
@@ -14,8 +18,52 @@ import type {
 
 type SqlRow = Record<string, unknown>;
 
+export interface AuthSessionRecord {
+  id: string;
+  userId: string;
+  organizationId: string | null;
+  issuedRole: AuthIdentity['role'];
+  expiresAt: string;
+  revokedAt: string | null;
+}
+
+export interface LoginRateLimitState {
+  attemptCount: number;
+  blockedUntil: string | null;
+  retryAfterSeconds: number;
+}
+
+interface AuditEventInput {
+  actorUserId: string | null;
+  organizationId: string | null;
+  action: string;
+  objectType: string;
+  objectId: string | null;
+  details?: Record<string, unknown>;
+}
+
 const DATABASE_URL = process.env.DATABASE_URL?.trim() ?? '';
 const EVIDENCE_SECRET = process.env.MARS_EVIDENCE_SECRET?.trim() ?? process.env.MARS_AUTH_SECRET?.trim() ?? '';
+const LOGIN_RATE_LIMIT_WINDOW_MS = Number(process.env.MARS_AUTH_RATE_LIMIT_WINDOW_MS ?? `${15 * 60 * 1000}`);
+const LOGIN_RATE_LIMIT_BLOCK_MS = Number(process.env.MARS_AUTH_RATE_LIMIT_BLOCK_MS ?? `${30 * 60 * 1000}`);
+const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = Number(process.env.MARS_AUTH_RATE_LIMIT_MAX_ATTEMPTS ?? '6');
+
+const parseIsoDate = (value: unknown) => (value ? new Date(String(value)).toISOString() : null);
+
+const parseFeatureValues = (value: unknown) =>
+  Array.isArray(value) ? value : JSON.parse(String(value ?? '[]'));
+
+const inferPasswordAlgorithm = (
+  passwordHash: string | null | undefined,
+  explicit?: string | null,
+): PasswordAlgorithm | null => {
+  if (explicit === 'legacy-sha256' || explicit === 'pbkdf2-sha256') {
+    return explicit;
+  }
+
+  if (!passwordHash) return null;
+  return passwordHash.startsWith('pbkdf2_sha256$') ? 'pbkdf2-sha256' : 'legacy-sha256';
+};
 
 const mapSessionRow = (row: SqlRow): PersistedSessionSummary => ({
   id: String(row.id),
@@ -35,8 +83,8 @@ const mapSessionRow = (row: SqlRow): PersistedSessionSummary => ({
   mode: row.mode === 'full' ? 'full' : 'demo',
   evidenceVersion: String(row.evidence_version),
   evidenceMode: row.evidence_mode === 'server-signed' ? 'server-signed' : 'local-preview',
-  startedAt: row.started_at ? new Date(String(row.started_at)).toISOString() : null,
-  endedAt: row.ended_at ? new Date(String(row.ended_at)).toISOString() : null,
+  startedAt: parseIsoDate(row.started_at),
+  endedAt: parseIsoDate(row.ended_at),
   status: String(row.status) as PersistedSessionSummary['status'],
   outcomeLabel: row.outcome_label ? String(row.outcome_label) : null,
   totalScore: typeof row.total_score === 'number' ? row.total_score : row.total_score ? Number(row.total_score) : null,
@@ -64,6 +112,44 @@ const mapSessionRow = (row: SqlRow): PersistedSessionSummary => ({
   createdAt: new Date(String(row.created_at)).toISOString(),
   updatedAt: new Date(String(row.updated_at)).toISOString(),
   eventCount: typeof row.event_count === 'number' ? row.event_count : Number(row.event_count ?? 0),
+});
+
+const mapLicenseRow = (row: SqlRow): LicenseEntitlement => ({
+  licenseId: String(row.id),
+  organizationId: String(row.organization_id),
+  organizationName: row.organization_name ? String(row.organization_name) : null,
+  plan: String(row.plan) as LicenseEntitlement['plan'],
+  status: String(row.status) as LicenseEntitlement['status'],
+  issuedAt: parseIsoDate(row.issued_at),
+  expiresAt: parseIsoDate(row.expires_at),
+  updatesUntil: parseIsoDate(row.updates_until),
+  seats: typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0),
+  features: parseFeatureValues(row.features) as LicenseEntitlement['features'],
+  source: 'backend',
+});
+
+const mapAuthAccountRow = (row: SqlRow): AuthAccountRecord => ({
+  userId: String(row.user_id),
+  email: String(row.email),
+  displayName: String(row.display_name),
+  role: row.is_platform_admin ? 'admin' : (String(row.membership_role ?? 'customer') as AuthAccountRecord['role']),
+  organizationId: row.organization_id ? String(row.organization_id) : null,
+  organizationName: row.organization_name ? String(row.organization_name) : null,
+  passwordHash: row.password_hash ? String(row.password_hash) : null,
+  passwordAlgorithm: inferPasswordAlgorithm(
+    row.password_hash ? String(row.password_hash) : null,
+    row.password_algorithm ? String(row.password_algorithm) : null,
+  ),
+  authSource: row.auth_source === 'database' ? 'database' : 'bootstrap',
+  authActive: row.auth_active === false ? false : row.auth_active === 'f' ? false : true,
+  licenseId: row.license_id ? String(row.license_id) : null,
+  plan: row.plan ? (String(row.plan) as AuthAccountRecord['plan']) : undefined,
+  status: row.status ? (String(row.status) as AuthAccountRecord['status']) : undefined,
+  issuedAt: parseIsoDate(row.issued_at),
+  expiresAt: parseIsoDate(row.expires_at),
+  updatesUntil: parseIsoDate(row.updates_until),
+  seats: typeof row.seats === 'number' ? row.seats : row.seats ? Number(row.seats) : undefined,
+  features: row.features ? (parseFeatureValues(row.features) as AuthAccountRecord['features']) : undefined,
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -176,6 +262,52 @@ const buildSessionsQuery = (whereClause: string) => `
   LIMIT 50
 `;
 
+const buildAuthAccountQuery = (whereClause: string) => `
+  SELECT
+    users.id AS user_id,
+    users.email,
+    users.display_name,
+    users.is_platform_admin,
+    auth_accounts.password_hash,
+    auth_accounts.password_algorithm,
+    auth_accounts.auth_source,
+    auth_accounts.active AS auth_active,
+    memberships.organization_id,
+    organizations.name AS organization_name,
+    memberships.role AS membership_role,
+    licenses.id AS license_id,
+    licenses.plan,
+    licenses.status,
+    licenses.issued_at,
+    licenses.expires_at,
+    licenses.updates_until,
+    licenses.seats,
+    licenses.features
+  FROM training.users AS users
+  LEFT JOIN training.auth_accounts AS auth_accounts
+    ON auth_accounts.user_id = users.id
+  LEFT JOIN LATERAL (
+    SELECT organization_id, role
+    FROM training.organization_memberships
+    WHERE user_id = users.id
+      AND active = true
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 1
+  ) AS memberships
+    ON true
+  LEFT JOIN training.organizations AS organizations
+    ON organizations.id = memberships.organization_id
+  LEFT JOIN LATERAL (
+    SELECT id, plan, status, issued_at, expires_at, updates_until, seats, features
+    FROM training.licenses
+    WHERE organization_id = memberships.organization_id
+    ORDER BY COALESCE(expires_at, updated_at) DESC, updated_at DESC
+    LIMIT 1
+  ) AS licenses
+    ON true
+  ${whereClause}
+`;
+
 const createServerEvidenceDigest = async (value: string) => {
   if (!EVIDENCE_SECRET) {
     throw new Error('MARS_EVIDENCE_SECRET o MARS_AUTH_SECRET non configurato per la firma evidenze.');
@@ -204,6 +336,38 @@ const runSessionsQuery = async (whereClause: string, params: unknown[] = []) => 
   const sql = assertDatabaseConfigured();
   return sql.query(buildSessionsQuery(whereClause), params);
 };
+
+const insertAuditEvent = async (event: AuditEventInput) => {
+  if (!DATABASE_URL) return;
+
+  const sql = assertDatabaseConfigured();
+  await sql`
+    INSERT INTO training.audit_log (id, actor_user_id, organization_id, action, object_type, object_id, details)
+    VALUES (
+      ${`audit_${crypto.randomUUID()}`},
+      ${event.actorUserId},
+      ${event.organizationId},
+      ${event.action},
+      ${event.objectType},
+      ${event.objectId},
+      ${JSON.stringify(event.details ?? {})}::jsonb
+    )
+  `;
+};
+
+const createEmptyRateLimitState = (): LoginRateLimitState => ({
+  attemptCount: 0,
+  blockedUntil: null,
+  retryAfterSeconds: 0,
+});
+
+const toRateLimitState = (attemptCount: number, blockedUntil: string | null): LoginRateLimitState => ({
+  attemptCount,
+  blockedUntil,
+  retryAfterSeconds: blockedUntil
+    ? Math.max(0, Math.ceil((new Date(blockedUntil).getTime() - Date.now()) / 1000))
+    : 0,
+});
 
 export const isDatabaseConfigured = () => Boolean(DATABASE_URL);
 
@@ -281,6 +445,36 @@ export const upsertBootstrapAccount = async (account: BootstrapAccount | null) =
         ]
       : []),
   ]);
+
+  if (!account.passwordHash) return;
+
+  const passwordAlgorithm = inferPasswordAlgorithm(account.passwordHash, account.passwordAlgorithm) ?? 'legacy-sha256';
+  try {
+    await sql`
+      INSERT INTO training.auth_accounts (
+        user_id,
+        password_hash,
+        password_algorithm,
+        auth_source,
+        active,
+        password_updated_at,
+        updated_at
+      )
+      VALUES (
+        ${account.userId},
+        ${account.passwordHash},
+        ${passwordAlgorithm},
+        ${'bootstrap'},
+        true,
+        now(),
+        now()
+      )
+      ON CONFLICT (user_id)
+      DO NOTHING
+    `;
+  } catch {
+    // Keep bootstrap seeding backward-compatible while auth tables are being introduced.
+  }
 };
 
 export const getLicenseFromDatabase = async (organizationId: string | null) => {
@@ -303,27 +497,233 @@ export const getLicenseFromDatabase = async (organizationId: string | null) => {
     LEFT JOIN training.organizations AS organizations
       ON organizations.id = licenses.organization_id
     WHERE organization_id = ${organizationId}
-    ORDER BY updated_at DESC
+    ORDER BY COALESCE(expires_at, updated_at) DESC, updated_at DESC
     LIMIT 1
   `;
 
   const row = rows[0];
   if (!row) return createMissingLicense();
+  return mapLicenseRow(row);
+};
 
-  const featureValues = Array.isArray(row.features) ? row.features : JSON.parse(String(row.features ?? '[]'));
+export const getAuthAccountByEmail = async (email: string) => {
+  if (!DATABASE_URL) return null;
+
+  const sql = assertDatabaseConfigured();
+  const rows = await sql.query(buildAuthAccountQuery('WHERE LOWER(users.email) = LOWER($1) LIMIT 1'), [email]);
+  return rows[0] ? mapAuthAccountRow(rows[0]) : null;
+};
+
+export const getAuthAccountByUserId = async (userId: string) => {
+  if (!DATABASE_URL) return null;
+
+  const sql = assertDatabaseConfigured();
+  const rows = await sql.query(buildAuthAccountQuery('WHERE users.id = $1 LIMIT 1'), [userId]);
+  return rows[0] ? mapAuthAccountRow(rows[0]) : null;
+};
+
+export const updateAccountPasswordHash = async (
+  userId: string,
+  passwordHash: string,
+  passwordAlgorithm: PasswordAlgorithm,
+  authSource: 'bootstrap' | 'database' = 'database',
+) => {
+  if (!DATABASE_URL) return;
+
+  const sql = assertDatabaseConfigured();
+  await sql`
+    INSERT INTO training.auth_accounts (
+      user_id,
+      password_hash,
+      password_algorithm,
+      auth_source,
+      active,
+      password_updated_at,
+      updated_at
+    )
+    VALUES (
+      ${userId},
+      ${passwordHash},
+      ${passwordAlgorithm},
+      ${authSource},
+      true,
+      now(),
+      now()
+    )
+    ON CONFLICT (user_id)
+    DO UPDATE SET
+      password_hash = EXCLUDED.password_hash,
+      password_algorithm = EXCLUDED.password_algorithm,
+      auth_source = EXCLUDED.auth_source,
+      active = true,
+      password_updated_at = now(),
+      updated_at = now()
+  `;
+};
+
+export const createAuthSession = async (
+  account: Pick<AuthAccountRecord, 'userId' | 'organizationId' | 'role'>,
+  expiresAt: string,
+) => {
+  if (!DATABASE_URL) return null;
+
+  const sql = assertDatabaseConfigured();
+  const sessionId = `authsess_${crypto.randomUUID()}`;
+  await sql`
+    INSERT INTO training.auth_sessions (
+      id,
+      user_id,
+      organization_id,
+      issued_role,
+      expires_at,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${sessionId},
+      ${account.userId},
+      ${account.organizationId},
+      ${account.role},
+      ${expiresAt},
+      now(),
+      now()
+    )
+  `;
+  return sessionId;
+};
+
+export const getAuthSession = async (sessionId: string) => {
+  if (!DATABASE_URL) return null;
+
+  const sql = assertDatabaseConfigured();
+  const rows = await sql`
+    SELECT id, user_id, organization_id, issued_role, expires_at, revoked_at
+    FROM training.auth_sessions
+    WHERE id = ${sessionId}
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) return null;
+
   return {
-    licenseId: String(row.id),
-    organizationId: String(row.organization_id),
-    organizationName: row.organization_name ? String(row.organization_name) : null,
-    plan: String(row.plan) as LicenseEntitlement['plan'],
-    status: String(row.status) as LicenseEntitlement['status'],
-    issuedAt: row.issued_at ? new Date(String(row.issued_at)).toISOString() : null,
-    expiresAt: row.expires_at ? new Date(String(row.expires_at)).toISOString() : null,
-    updatesUntil: row.updates_until ? new Date(String(row.updates_until)).toISOString() : null,
-    seats: typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0),
-    features: featureValues as LicenseEntitlement['features'],
-    source: 'backend',
-  } satisfies LicenseEntitlement;
+    id: String(row.id),
+    userId: String(row.user_id),
+    organizationId: row.organization_id ? String(row.organization_id) : null,
+    issuedRole: String(row.issued_role) as AuthSessionRecord['issuedRole'],
+    expiresAt: new Date(String(row.expires_at)).toISOString(),
+    revokedAt: parseIsoDate(row.revoked_at),
+  } satisfies AuthSessionRecord;
+};
+
+export const revokeAuthSession = async (sessionId: string) => {
+  if (!DATABASE_URL) return false;
+
+  const sql = assertDatabaseConfigured();
+  const rows = await sql`
+    UPDATE training.auth_sessions
+    SET revoked_at = now(), updated_at = now()
+    WHERE id = ${sessionId}
+      AND revoked_at IS NULL
+    RETURNING id
+  `;
+  return Boolean(rows[0]);
+};
+
+export const getLoginRateLimitState = async (bucketKey: string) => {
+  if (!DATABASE_URL) return createEmptyRateLimitState();
+
+  const sql = assertDatabaseConfigured();
+  const rows = await sql`
+    SELECT attempt_count, blocked_until
+    FROM training.auth_rate_limits
+    WHERE bucket_key = ${bucketKey}
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) return createEmptyRateLimitState();
+
+  const blockedUntil = parseIsoDate(row.blocked_until);
+  if (blockedUntil && new Date(blockedUntil).getTime() <= Date.now()) {
+    return createEmptyRateLimitState();
+  }
+
+  return toRateLimitState(
+    typeof row.attempt_count === 'number' ? row.attempt_count : Number(row.attempt_count ?? 0),
+    blockedUntil,
+  );
+};
+
+export const registerFailedLogin = async (bucketKey: string) => {
+  if (!DATABASE_URL) return createEmptyRateLimitState();
+
+  const sql = assertDatabaseConfigured();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const rows = await sql`
+    SELECT attempt_count, window_started_at, blocked_until
+    FROM training.auth_rate_limits
+    WHERE bucket_key = ${bucketKey}
+    LIMIT 1
+  `;
+  const row = rows[0];
+  const windowStart = parseIsoDate(row?.window_started_at);
+  const blockedUntil = parseIsoDate(row?.blocked_until);
+
+  const windowStillOpen =
+    windowStart !== null && now.getTime() - new Date(windowStart).getTime() < LOGIN_RATE_LIMIT_WINDOW_MS;
+  const nextAttemptCount =
+    row && windowStillOpen
+      ? (typeof row.attempt_count === 'number' ? row.attempt_count : Number(row.attempt_count ?? 0)) + 1
+      : 1;
+  const nextWindowStartedAt = windowStillOpen && windowStart ? windowStart : nowIso;
+  const nextBlockedUntil =
+    blockedUntil && new Date(blockedUntil).getTime() > now.getTime()
+      ? blockedUntil
+      : nextAttemptCount >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS
+        ? new Date(now.getTime() + LOGIN_RATE_LIMIT_BLOCK_MS).toISOString()
+        : null;
+
+  await sql`
+    INSERT INTO training.auth_rate_limits (
+      bucket_key,
+      attempt_count,
+      window_started_at,
+      blocked_until,
+      last_attempt_at,
+      updated_at
+    )
+    VALUES (
+      ${bucketKey},
+      ${nextAttemptCount},
+      ${nextWindowStartedAt},
+      ${nextBlockedUntil},
+      ${nowIso},
+      now()
+    )
+    ON CONFLICT (bucket_key)
+    DO UPDATE SET
+      attempt_count = EXCLUDED.attempt_count,
+      window_started_at = EXCLUDED.window_started_at,
+      blocked_until = EXCLUDED.blocked_until,
+      last_attempt_at = EXCLUDED.last_attempt_at,
+      updated_at = now()
+  `;
+
+  return toRateLimitState(nextAttemptCount, nextBlockedUntil);
+};
+
+export const clearLoginRateLimit = async (bucketKey: string) => {
+  if (!DATABASE_URL) return;
+
+  const sql = assertDatabaseConfigured();
+  await sql`
+    DELETE FROM training.auth_rate_limits
+    WHERE bucket_key = ${bucketKey}
+  `;
+};
+
+export const recordAuditEvent = async (event: AuditEventInput) => {
+  await insertAuditEvent(event);
 };
 
 export const createDraftSession = async (
@@ -394,18 +794,14 @@ export const createDraftSession = async (
   `;
   const resolvedSessionId = String(rows[0]?.id ?? persistedSessionId);
 
-  await sql`
-    INSERT INTO training.audit_log (id, actor_user_id, organization_id, action, object_type, object_id, details)
-    VALUES (
-      ${`audit_${crypto.randomUUID()}`},
-      ${identity.userId},
-      ${organizationId},
-      'session.create',
-      'training_session',
-      ${resolvedSessionId},
-      ${JSON.stringify({ clientSessionId: payload.courseSession.sessionId })}::jsonb
-    )
-  `;
+  await insertAuditEvent({
+    actorUserId: identity.userId,
+    organizationId,
+    action: 'session.create',
+    objectType: 'training_session',
+    objectId: resolvedSessionId,
+    details: { clientSessionId: payload.courseSession.sessionId },
+  });
 
   const summaryRows = await runSessionsQuery('WHERE sessions.id = $1', [resolvedSessionId]);
   return mapSessionRow(summaryRows[0] ?? rows[0]);

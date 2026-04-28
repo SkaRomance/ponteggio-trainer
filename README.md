@@ -38,6 +38,7 @@ npm run hash-password -- "my-password"
 ## Backend setup
 
 - Configure `MARS_AUTH_SECRET`, `MARS_EVIDENCE_SECRET`, `MARS_AUTH_ACCOUNTS_JSON`, and `DATABASE_URL` in local or Vercel environments.
+- Optional auth hardening envs: `MARS_AUTH_PBKDF2_ITERATIONS`, `MARS_AUTH_RATE_LIMIT_MAX_ATTEMPTS`, `MARS_AUTH_RATE_LIMIT_WINDOW_MS`, `MARS_AUTH_RATE_LIMIT_BLOCK_MS`.
 - The persistent training archive schema is versioned in [database/training-schema.sql](./database/training-schema.sql).
 - Production is designed around Vercel Functions plus Neon/Postgres; preview and local environments need their own `DATABASE_URL`.
 
