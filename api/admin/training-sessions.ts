@@ -1,5 +1,5 @@
-import { canViewAllSessions } from '../../src/models/accessControl.js';
 import { getAccessResponseForRequest, json } from '../_lib/auth.js';
+import { isDatabaseConfigured, listAdminSessions } from '../_lib/db.js';
 
 export const config = {
   runtime: 'edge',
@@ -11,19 +11,28 @@ export default async function handler(request: Request) {
   }
 
   const { accessResponse } = await getAccessResponseForRequest(request);
-  const authorized = canViewAllSessions(accessResponse.identity, accessResponse.license);
-
-  if (!authorized) {
-    return json({ message: 'Permessi insufficienti per l archivio globale delle sessioni.' }, { status: 403 });
+  if (accessResponse.identity.role !== 'admin') {
+    return json({ message: 'Solo gli admin piattaforma possono accedere all archivio globale.' }, { status: 403 });
   }
 
+  if (!isDatabaseConfigured()) {
+    return json(
+      {
+        sessions: [],
+        message: 'Persistence backend non configurato.',
+        status: 'database-required',
+      },
+      { status: 501 },
+    );
+  }
+
+  const sessions = await listAdminSessions();
   return json(
     {
-      sessions: [],
-      message:
-        'Archivio sessioni globale autorizzato ma non ancora collegato a un database persistente. Integrare Neon o Postgres server-side.',
-      status: accessResponse.sessionsArchiveStatus,
+      sessions,
+      message: sessions.length ? null : 'Nessuna sessione persistita disponibile.',
+      status: 'ready',
     },
-    { status: 501 },
+    { status: 200 },
   );
 }

@@ -9,36 +9,14 @@ import {
   type AccessApiResponse,
   type AuthIdentity,
   type LicenseEntitlement,
-  type LicenseFeature,
-  type LicensePlan,
-  type LicenseStatus,
-  type UserRole,
 } from '../../src/models/accessControl.js';
-
-type AccountRole = Exclude<UserRole, 'anonymous'>;
-
-interface AccountRecord {
-  userId: string;
-  email: string;
-  displayName: string;
-  role: AccountRole;
-  organizationId: string | null;
-  organizationName?: string | null;
-  passwordHash: string;
-  licenseId?: string | null;
-  plan?: LicensePlan;
-  status?: LicenseStatus;
-  issuedAt?: string | null;
-  expiresAt?: string | null;
-  updatesUntil?: string | null;
-  seats?: number;
-  features?: LicenseFeature[];
-}
+import type { BootstrapAccount } from '../../src/models/bootstrapAccount.js';
+import { getLicenseFromDatabase, isDatabaseConfigured, upsertBootstrapAccount } from './db.js';
 
 interface SessionTokenPayload {
   userId: string;
   email: string;
-  role: AccountRole;
+  role: BootstrapAccount['role'];
   organizationId: string | null;
   exp: number;
 }
@@ -83,7 +61,7 @@ const sha256Hex = async (value: string) => {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 };
 
-const createIdentityFromAccount = (account: AccountRecord | null): AuthIdentity =>
+const createIdentityFromAccount = (account: BootstrapAccount | null): AuthIdentity =>
   account
     ? {
         status: 'authenticated',
@@ -95,7 +73,7 @@ const createIdentityFromAccount = (account: AccountRecord | null): AuthIdentity 
       }
     : createAnonymousIdentity();
 
-const createLicenseFromAccount = (account: AccountRecord | null): LicenseEntitlement => {
+const createLicenseFromAccount = (account: BootstrapAccount | null): LicenseEntitlement => {
   if (!account) return createMissingLicense();
 
   const hasExplicitLicenseData = Boolean(
@@ -126,13 +104,13 @@ const createLicenseFromAccount = (account: AccountRecord | null): LicenseEntitle
 
 const parseAccounts = () => {
   const raw = process.env.MARS_AUTH_ACCOUNTS_JSON;
-  if (!raw) return [] as AccountRecord[];
+  if (!raw) return [] as BootstrapAccount[];
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [] as AccountRecord[];
+    if (!Array.isArray(parsed)) return [] as BootstrapAccount[];
     return parsed
-      .filter((entry): entry is AccountRecord => Boolean(entry && typeof entry === 'object'))
+      .filter((entry): entry is BootstrapAccount => Boolean(entry && typeof entry === 'object'))
       .map((entry) => ({
         ...entry,
         email: normalizeEmail(entry.email),
@@ -140,7 +118,7 @@ const parseAccounts = () => {
         organizationName: entry.organizationName ?? null,
       }));
   } catch {
-    return [] as AccountRecord[];
+    return [] as BootstrapAccount[];
   }
 };
 
@@ -160,17 +138,27 @@ const createMessage = (configured: boolean, identity: AuthIdentity, license: Lic
     return 'Autenticazione pronta. Accedi con un account admin o cliente licenziato.';
   }
   if (canViewAllSessions(identity, license) || hasFeature(license, 'session_sync')) {
-    return SESSION_ARCHIVE_MESSAGE;
+    return isDatabaseConfigured()
+      ? 'Autenticazione applicativa e archivio sessioni attivi.'
+      : SESSION_ARCHIVE_MESSAGE;
   }
   return null;
 };
 
-const createAccessResponse = (configured: boolean, account: AccountRecord | null): AccessApiResponse => {
+const createAccessResponse = (
+  configured: boolean,
+  account: BootstrapAccount | null,
+  licenseOverride?: LicenseEntitlement,
+): AccessApiResponse => {
   const identity = createIdentityFromAccount(account);
-  const license = createLicenseFromAccount(account);
+  const license = licenseOverride ?? createLicenseFromAccount(account);
+  const persistenceReady = isDatabaseConfigured();
+  const canArchiveSessions = canViewAllSessions(identity, license) || hasFeature(license, 'session_sync');
   const sessionsArchiveStatus =
-    canViewAllSessions(identity, license) || hasFeature(license, 'session_sync')
-      ? 'database-required'
+    canArchiveSessions
+      ? persistenceReady
+        ? 'ready'
+        : 'database-required'
       : 'unavailable';
 
   return createAccessApiResponse({
@@ -183,7 +171,7 @@ const createAccessResponse = (configured: boolean, account: AccountRecord | null
   });
 };
 
-const findAccountByEmail = (accounts: AccountRecord[], email: string) =>
+const findAccountByEmail = (accounts: BootstrapAccount[], email: string) =>
   accounts.find((account) => account.email === normalizeEmail(email)) ?? null;
 
 const serializeSessionCookie = (token: string, maxAgeSeconds: number) =>
@@ -219,6 +207,27 @@ const decodeTokenPayload = async (token: string, secret: string) => {
   } catch {
     return null;
   }
+};
+
+const hydrateLicense = async (account: BootstrapAccount | null) => {
+  const fallbackLicense = createLicenseFromAccount(account);
+  if (!account?.organizationId || !isDatabaseConfigured()) {
+    return fallbackLicense;
+  }
+
+  try {
+    const persistedLicense = await getLicenseFromDatabase(account.organizationId);
+    if (persistedLicense.status !== 'missing' || persistedLicense.licenseId) {
+      return {
+        ...persistedLicense,
+        organizationName: persistedLicense.organizationName ?? fallbackLicense.organizationName,
+      } satisfies LicenseEntitlement;
+    }
+  } catch {
+    // Keep env-backed fallback if the database is temporarily unavailable.
+  }
+
+  return fallbackLicense;
 };
 
 export const json = (body: unknown, init: ResponseInit = {}) =>
@@ -259,10 +268,32 @@ export const getAccessResponseForRequest = async (request: Request) => {
   }
 
   const account = findAccountByEmail(config.accounts, payload.email);
+  if (
+    !account ||
+    payload.userId !== account.userId ||
+    payload.role !== account.role ||
+    payload.organizationId !== account.organizationId
+  ) {
+    return {
+      configured: true,
+      account: null,
+      accessResponse: createAccessResponse(true, null),
+    };
+  }
+
+  if (account) {
+    try {
+      await upsertBootstrapAccount(account);
+    } catch {
+      // Auth should still work even if persistence bootstrap is temporarily unavailable.
+    }
+  }
+
+  const effectiveLicense = await hydrateLicense(account);
   return {
     configured: true,
     account,
-    accessResponse: createAccessResponse(true, account),
+    accessResponse: createAccessResponse(true, account, effectiveLicense),
   };
 };
 

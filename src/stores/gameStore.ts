@@ -7,6 +7,7 @@ import {
   createMissingLicense,
   getAccessLevel,
   getSessionMode,
+  hasFeature,
   type AccessApiResponse,
   type AccessLevel,
   type AccessSyncStatus,
@@ -15,6 +16,13 @@ import {
   type LicenseEntitlement,
   type SessionsArchiveStatus,
 } from '../models/accessControl';
+import type {
+  DraftSessionPayload,
+  FinalizeSessionPayload,
+  PersistedSessionSummary,
+  PersistedSessionsResponse,
+  PersistenceSyncStatus,
+} from '../models/persistence';
 
 export type GamePhase =
   | 'menu'
@@ -119,6 +127,16 @@ export interface GameState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   canViewGlobalSessions: () => boolean;
+  persistedSessionId: string | null;
+  serverEvidenceHash: string | null;
+  sessionPersistenceStatus: PersistenceSyncStatus;
+  sessionPersistenceMessage: string | null;
+  persistedSessions: PersistedSessionSummary[];
+  persistedSessionsStatus: PersistenceSyncStatus;
+  persistedSessionsMessage: string | null;
+  loadPersistedSessions: () => Promise<void>;
+  createPersistedSessionDraft: () => Promise<void>;
+  finalizePersistedSession: (status?: 'finalized' | 'aborted') => Promise<void>;
 
   locale: Locale;
   setLocale: (locale: Locale) => void;
@@ -299,6 +317,110 @@ const readResponseMessage = async (response: Response, fallback: string) => {
   }
 };
 
+const canPersistSessions = (state: Pick<GameState, 'authIdentity' | 'licenseEntitlement' | 'sessionsArchiveStatus'>) =>
+  state.authIdentity.status === 'authenticated' &&
+  state.sessionsArchiveStatus === 'ready' &&
+  Boolean(state.authIdentity.organizationId ?? state.licenseEntitlement.organizationId) &&
+  (state.authIdentity.role === 'admin' || hasFeature(state.licenseEntitlement, 'session_sync'));
+
+interface ArchiveLoadContext {
+  userId: string;
+  organizationId: string | null;
+  sessionsArchiveStatus: SessionsArchiveStatus;
+  canViewGlobalSessions: boolean;
+}
+
+interface SessionPersistenceContext {
+  sessionId: string;
+  sessionRunId: number;
+}
+
+const captureArchiveLoadContext = (
+  state: Pick<GameState, 'authIdentity' | 'sessionsArchiveStatus' | 'canViewGlobalSessions'>,
+): ArchiveLoadContext | null =>
+  state.authIdentity.status === 'authenticated' && state.authIdentity.userId
+    ? {
+        userId: state.authIdentity.userId,
+        organizationId: state.authIdentity.organizationId,
+        sessionsArchiveStatus: state.sessionsArchiveStatus,
+        canViewGlobalSessions: state.canViewGlobalSessions(),
+      }
+    : null;
+
+const isSameArchiveLoadContext = (
+  state: Pick<GameState, 'authIdentity' | 'sessionsArchiveStatus' | 'canViewGlobalSessions'>,
+  context: ArchiveLoadContext | null,
+) =>
+  Boolean(
+    context &&
+      state.authIdentity.status === 'authenticated' &&
+      state.authIdentity.userId === context.userId &&
+      state.authIdentity.organizationId === context.organizationId &&
+      state.sessionsArchiveStatus === context.sessionsArchiveStatus &&
+      state.canViewGlobalSessions() === context.canViewGlobalSessions,
+  );
+
+const captureSessionPersistenceContext = (
+  state: Pick<GameState, 'courseSession' | 'sessionRunId'>,
+): SessionPersistenceContext => ({
+  sessionId: state.courseSession.sessionId,
+  sessionRunId: state.sessionRunId,
+});
+
+const isSameSessionPersistenceContext = (
+  state: Pick<GameState, 'courseSession' | 'sessionRunId'>,
+  context: SessionPersistenceContext,
+) => state.courseSession.sessionId === context.sessionId && state.sessionRunId === context.sessionRunId;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const waitForDraftPersistence = async (
+  getState: () => GameState,
+  context: SessionPersistenceContext,
+  attempts = 40,
+) => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const currentState = getState();
+    if (
+      !isSameSessionPersistenceContext(currentState, context) ||
+      currentState.persistedSessionId ||
+      currentState.sessionPersistenceStatus !== 'loading'
+    ) {
+      return;
+    }
+
+    await wait(50);
+  }
+};
+
+const normalizePersistedSessionsResponse = (payload: unknown): PersistedSessionsResponse => {
+  if (Array.isArray(payload)) {
+    return {
+      sessions: payload as PersistedSessionSummary[],
+      status: 'ready',
+      message: null,
+    };
+  }
+
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    const candidate =
+      record.sessions ?? record.items ?? record.data ?? record.results ?? [];
+
+    return {
+      sessions: Array.isArray(candidate) ? (candidate as PersistedSessionSummary[]) : [],
+      status: (record.status as PersistedSessionsResponse['status']) ?? 'ready',
+      message: typeof record.message === 'string' ? record.message : null,
+    };
+  }
+
+  return {
+    sessions: [],
+    status: 'unavailable',
+    message: 'Risposta archivio sessioni non valida.',
+  };
+};
+
 export const useGameStore = create<GameState>((set, get) => {
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
   const initialAccessResponse = createAccessApiResponse();
@@ -348,6 +470,9 @@ export const useGameStore = create<GameState>((set, get) => {
           sessionsArchiveStatus: payload.sessionsArchiveStatus,
           accessSyncStatus: 'ready',
           accessSyncMessage: payload.message,
+          persistedSessions: [],
+          persistedSessionsStatus: 'idle',
+          persistedSessionsMessage: null,
           courseSession: withAccessContext(
             {
               ...state.courseSession,
@@ -359,6 +484,15 @@ export const useGameStore = create<GameState>((set, get) => {
             nextMode,
           ),
         }));
+        if (payload.identity.status === 'authenticated' && payload.sessionsArchiveStatus === 'ready') {
+          void get().loadPersistedSessions();
+        } else {
+          set({
+            persistedSessions: [],
+            persistedSessionsStatus: 'idle',
+            persistedSessionsMessage: null,
+          });
+        }
       } catch (error) {
         set({
           authConfigured: false,
@@ -369,6 +503,9 @@ export const useGameStore = create<GameState>((set, get) => {
           sessionsArchiveStatus: 'unavailable',
           accessSyncStatus: 'error',
           accessSyncMessage: error instanceof Error ? error.message : 'Errore di sincronizzazione accessi.',
+          persistedSessions: [],
+          persistedSessionsStatus: 'error',
+          persistedSessionsMessage: 'Archivio sessioni non disponibile.',
         });
       }
     },
@@ -423,6 +560,14 @@ export const useGameStore = create<GameState>((set, get) => {
         accessSyncMessage: state.authConfigured
           ? 'Sessione autenticata chiusa. Archivio globale non disponibile senza backend.'
           : 'Sessione chiusa.',
+        sessionRunId: state.sessionRunId + 1,
+        persistedSessionId: null,
+        serverEvidenceHash: null,
+        sessionPersistenceStatus: 'idle',
+        sessionPersistenceMessage: null,
+        persistedSessions: [],
+        persistedSessionsStatus: 'idle',
+        persistedSessionsMessage: null,
         courseSession: withAccessContext(
           {
             ...state.courseSession,
@@ -436,6 +581,237 @@ export const useGameStore = create<GameState>((set, get) => {
       }));
     },
     canViewGlobalSessions: () => canViewAllSessions(get().authIdentity, get().licenseEntitlement),
+    persistedSessionId: null,
+    serverEvidenceHash: null,
+    sessionPersistenceStatus: 'idle',
+    sessionPersistenceMessage: null,
+    persistedSessions: [],
+    persistedSessionsStatus: 'idle',
+    persistedSessionsMessage: null,
+    loadPersistedSessions: async () => {
+      const state = get();
+      if (state.authIdentity.status !== 'authenticated' || state.sessionsArchiveStatus !== 'ready') {
+        set({
+          persistedSessions: [],
+          persistedSessionsStatus: 'idle',
+          persistedSessionsMessage: null,
+        });
+        return;
+      }
+
+      const requestContext = captureArchiveLoadContext(state);
+      set({ persistedSessionsStatus: 'loading', persistedSessionsMessage: null });
+
+      try {
+        const endpoint = state.canViewGlobalSessions() ? '/api/admin/sessions' : '/api/evidence/sessions';
+        const response = await fetch(endpoint, {
+          credentials: 'same-origin',
+        });
+        const payload = normalizePersistedSessionsResponse(await response.json());
+
+        if (!response.ok && response.status !== 501) {
+          throw new Error(payload.message ?? 'Impossibile caricare l archivio sessioni.');
+        }
+
+        if (!isSameArchiveLoadContext(get(), requestContext)) {
+          return;
+        }
+
+        set({
+          persistedSessions: payload.sessions,
+          persistedSessionsStatus: payload.status === 'ready' ? 'ready' : 'error',
+          persistedSessionsMessage: payload.message,
+        });
+      } catch (error) {
+        if (!isSameArchiveLoadContext(get(), requestContext)) {
+          return;
+        }
+
+        set({
+          persistedSessionsStatus: 'error',
+          persistedSessionsMessage:
+            error instanceof Error ? error.message : 'Errore durante il caricamento archivio sessioni.',
+        });
+      }
+    },
+    createPersistedSessionDraft: async () => {
+      const state = get();
+      if (
+        !canPersistSessions(state) ||
+        state.persistedSessionId ||
+        !state.courseSession.startedAt ||
+        state.sessionPersistenceStatus === 'loading' ||
+        state.sessionPersistenceStatus === 'syncing'
+      ) {
+        return;
+      }
+
+      const requestContext = captureSessionPersistenceContext(state);
+      set({
+        sessionPersistenceStatus: 'loading',
+        sessionPersistenceMessage: null,
+      });
+
+      try {
+        const payload: DraftSessionPayload = {
+          courseSession: {
+            sessionId: state.courseSession.sessionId,
+            scenarioSeed: state.courseSession.scenarioSeed,
+            traineeName: state.courseSession.traineeName,
+            instructorName: state.courseSession.instructorName,
+            providerName: state.courseSession.providerName,
+            courseCode: state.courseSession.courseCode,
+            location: state.courseSession.location,
+            vrDeviceId: state.courseSession.vrDeviceId,
+            mode: state.courseSession.mode,
+            evidenceVersion: state.courseSession.evidenceVersion,
+            organizationId: state.courseSession.organizationId,
+            organizationName: state.courseSession.organizationName,
+            licenseId: state.courseSession.licenseId,
+            startedByUserId: state.courseSession.startedByUserId,
+            startedByRole: state.courseSession.startedByRole,
+            startedAt: state.courseSession.startedAt,
+            evidenceMode: state.courseSession.evidenceMode,
+          },
+        };
+
+        const response = await fetch('/api/evidence/sessions', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        const payloadResponse = (await response.json()) as {
+          session?: PersistedSessionSummary;
+          message?: string | null;
+        };
+
+        if (!response.ok || !payloadResponse.session) {
+          throw new Error(payloadResponse.message ?? 'Impossibile creare la sessione persistita.');
+        }
+        const persistedSession = payloadResponse.session;
+
+        set((currentState) =>
+          isSameSessionPersistenceContext(currentState, requestContext)
+            ? {
+                persistedSessionId: persistedSession.id,
+                sessionPersistenceStatus: 'ready',
+                sessionPersistenceMessage: payloadResponse.message ?? 'Sessione tracciata nel database.',
+              }
+            : {},
+        );
+        void get().loadPersistedSessions();
+      } catch (error) {
+        set((currentState) =>
+          isSameSessionPersistenceContext(currentState, requestContext)
+            ? {
+                sessionPersistenceStatus: 'error',
+                sessionPersistenceMessage:
+                  error instanceof Error ? error.message : 'Errore durante la creazione della sessione persistita.',
+              }
+            : {},
+        );
+      }
+    },
+    finalizePersistedSession: async (status = 'finalized') => {
+      const beforeDraft = get();
+      if (!canPersistSessions(beforeDraft)) return;
+      const requestContext = captureSessionPersistenceContext(beforeDraft);
+
+      if (!beforeDraft.persistedSessionId) {
+        if (beforeDraft.sessionPersistenceStatus === 'loading') {
+          await waitForDraftPersistence(get, requestContext);
+        } else {
+          await beforeDraft.createPersistedSessionDraft();
+        }
+      }
+
+      const state = get();
+      if (
+        !isSameSessionPersistenceContext(state, requestContext) ||
+        !state.persistedSessionId ||
+        state.sessionPersistenceStatus === 'syncing' ||
+        state.sessionPersistenceStatus === 'loading'
+      ) {
+        return;
+      }
+
+      set({
+        sessionPersistenceStatus: 'syncing',
+        sessionPersistenceMessage: null,
+      });
+
+      try {
+        const { buildTrainingSessionReport } = await import('../utils/sessionReport');
+        const report = buildTrainingSessionReport(state);
+        const payload: FinalizeSessionPayload = {
+          report: report as unknown as Record<string, unknown>,
+          localIntegrityHash: report.integrityHash,
+          status,
+          endedAt: state.courseSession.endedAt,
+          events: state.eventLog.map((event, eventIndex) => ({
+            id: event.id,
+            eventIndex,
+            type: event.type,
+            phase: event.phase,
+            timestamp: event.timestamp,
+            payload: event.payload,
+          })),
+          outcome: {
+            label: report.outcome.label,
+            totalScore: report.outcome.totalScore,
+            residualSafety: report.outcome.residualSafety,
+            infractions: report.outcome.infractions,
+            criticalInfractions: report.outcome.criticalInfractions,
+            highInfractions: report.outcome.highInfractions,
+          },
+        };
+
+        const response = await fetch(`/api/evidence/sessions/${state.persistedSessionId}/finalize`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        const payloadResponse = (await response.json()) as {
+          serverHash?: string;
+          message?: string | null;
+        };
+
+        if (!response.ok || !payloadResponse.serverHash) {
+          throw new Error(payloadResponse.message ?? 'Impossibile finalizzare la sessione persistita.');
+        }
+
+        set((currentState) =>
+          isSameSessionPersistenceContext(currentState, requestContext)
+            ? {
+                serverEvidenceHash: payloadResponse.serverHash ?? null,
+                sessionPersistenceStatus: 'ready',
+                sessionPersistenceMessage: payloadResponse.message ?? 'Sessione archiviata e firmata dal server.',
+                courseSession: {
+                  ...currentState.courseSession,
+                  evidenceMode: 'server-signed',
+                },
+              }
+            : {},
+        );
+        void get().loadPersistedSessions();
+      } catch (error) {
+        set((currentState) =>
+          isSameSessionPersistenceContext(currentState, requestContext)
+            ? {
+                sessionPersistenceStatus: 'error',
+                sessionPersistenceMessage:
+                  error instanceof Error ? error.message : 'Errore durante la finalizzazione della sessione persistita.',
+              }
+            : {},
+        );
+      }
+    },
 
     locale: 'it',
     setLocale: (locale) => set({ locale }),
@@ -530,6 +906,7 @@ export const useGameStore = create<GameState>((set, get) => {
               }),
             ],
           });
+          void get().finalizePersistedSession('finalized');
           return;
         }
         if (state.isPhaseLocked(next)) {
@@ -551,6 +928,7 @@ export const useGameStore = create<GameState>((set, get) => {
               }),
             ],
           });
+          void get().finalizePersistedSession('finalized');
         } else {
           set({
             currentPhase: next,
@@ -582,6 +960,7 @@ export const useGameStore = create<GameState>((set, get) => {
             }),
           ],
         });
+        void get().finalizePersistedSession('finalized');
       }
     },
 
@@ -711,9 +1090,14 @@ export const useGameStore = create<GameState>((set, get) => {
         notices: [],
         eventLog: [sessionStartEvent],
         phaseAuditStart: { phase: 'warehouse', health: 100, score: 0 },
+        persistedSessionId: null,
+        serverEvidenceHash: null,
+        sessionPersistenceStatus: 'idle',
+        sessionPersistenceMessage: null,
         courseSession: nextSession,
         sessionRunId: state.sessionRunId + 1,
       });
+      void get().createPersistedSessionDraft();
     },
     pauseGame: () => set({ isPaused: true }),
     resumeGame: () => set({ isPaused: false }),
@@ -773,6 +1157,7 @@ export const useGameStore = create<GameState>((set, get) => {
           }),
         ],
       });
+      void get().finalizePersistedSession(failedPhaseScore ? 'aborted' : 'finalized');
     },
     resetGame: () =>
       set((state) => ({
@@ -798,9 +1183,15 @@ export const useGameStore = create<GameState>((set, get) => {
         notices: [],
         eventLog: [],
         phaseAuditStart: null,
+        sessionRunId: state.sessionRunId + 1,
+        persistedSessionId: null,
+        serverEvidenceHash: null,
+        sessionPersistenceStatus: 'idle',
+        sessionPersistenceMessage: null,
         courseSession: {
           ...state.courseSession,
           endedAt: state.courseSession.endedAt ?? new Date().toISOString(),
+          evidenceMode: state.evidenceMode,
         },
       })),
 

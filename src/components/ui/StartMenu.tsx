@@ -4,6 +4,7 @@ import { Lock } from 'lucide-react';
 import { formatDate, formatRole } from '../../models/accessControl';
 import AccessStatusPanel from './AccessStatusPanel';
 import CourseSessionPanel from './CourseSessionPanel';
+import EvidenceSessionsPanel from './EvidenceSessionsPanel';
 
 export default function StartMenu() {
   const {
@@ -67,6 +68,7 @@ export default function StartMenu() {
         </div>
 
         <AccessStatusPanel />
+        <EvidenceSessionsPanel />
         <CourseSessionPanel />
 
         <ul className="phases-grid" aria-label="Fasi del percorso">
@@ -114,7 +116,7 @@ export default function StartMenu() {
 
         <p className="menu-license-note">
           {canViewGlobalSessions()
-            ? `Profilo ${formatRole(authIdentity.role)} con permesso di audit globale. Collegare un archivio server-side per vedere tutte le sessioni.`
+            ? `Profilo ${formatRole(authIdentity.role)} con permesso di audit globale. L archivio server-side e disponibile quando il backend risponde con stato pronto.`
             : 'Le fasi complete, gli aggiornamenti e gli upgrade triennali dipendono da licenza server-side attiva, non da sblocchi locali nel browser.'}
         </p>
 

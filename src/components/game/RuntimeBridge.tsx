@@ -19,10 +19,13 @@ export default function RuntimeBridge() {
         isPaused: state.isPaused,
         session: {
           id: state.courseSession.sessionId,
+          persistedId: state.persistedSessionId,
           mode: state.courseSession.mode,
           startedAt: state.courseSession.startedAt,
           scenarioSeed: state.courseSession.scenarioSeed,
           evidenceReady: state.isCourseSessionReady(),
+          evidenceMode: state.courseSession.evidenceMode,
+          serverHash: state.serverEvidenceHash,
         },
         score: state.totalScore,
         safety: {
@@ -33,6 +36,8 @@ export default function RuntimeBridge() {
         progress: {
           completedPhases: state.completedPhases,
           unlockedPhases: state.unlockedPhases,
+          persistenceStatus: state.sessionPersistenceStatus,
+          persistenceMessage: state.sessionPersistenceMessage,
           phaseScores: state.phaseScores.map((phaseScore) => ({
             phase: phaseScore.phase,
             completed: phaseScore.completed,

@@ -18,6 +18,10 @@ export default function AccessStatusPanel() {
     accessSyncStatus,
     accessSyncMessage,
     sessionsArchiveStatus,
+    persistedSessionId,
+    serverEvidenceHash,
+    sessionPersistenceStatus,
+    sessionPersistenceMessage,
     syncAccessState,
     login,
     logout,
@@ -28,6 +32,13 @@ export default function AccessStatusPanel() {
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const isBusy = accessSyncStatus === 'loading';
   const canSeeGlobalSessions = canViewGlobalSessions();
+  const persistenceStatusMessage =
+    sessionPersistenceMessage ??
+    (sessionPersistenceStatus === 'loading'
+      ? 'Creazione della bozza evidenza server in corso.'
+      : sessionPersistenceStatus === 'syncing'
+        ? 'Finalizzazione e firma server-side della sessione in corso.'
+        : null);
 
   const capabilitySummary = useMemo(
     () => [
@@ -166,13 +177,38 @@ export default function AccessStatusPanel() {
 
       <div className="access-note">
         {authConfigured
-          ? 'Autenticazione applicativa attiva. La visibilita globale delle sessioni richiede ancora un archivio server-side persistente.'
+          ? sessionsArchiveStatus === 'ready'
+            ? 'Autenticazione e archivio server-side attivi. Le sessioni possono essere persistite e consultate dai profili autorizzati.'
+            : 'Autenticazione applicativa attiva. Per persistere e consultare le sessioni serve anche DATABASE_URL in Vercel.'
           : 'Backend auth non configurato. Imposta MARS_AUTH_SECRET e MARS_AUTH_ACCOUNTS_JSON in Vercel per abilitare admin e clienti con licenza.'}
       </div>
 
       {(accessSyncMessage || formMessage) && (
         <div className="access-feedback" role="status" aria-live="polite">
           {formMessage || accessSyncMessage}
+        </div>
+      )}
+
+      {(sessionPersistenceStatus !== 'idle' || persistenceStatusMessage || persistedSessionId || serverEvidenceHash) && (
+        <div
+          className={`access-feedback${sessionPersistenceStatus === 'error' ? ' error' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          <strong>
+            {sessionPersistenceStatus === 'ready'
+              ? serverEvidenceHash
+                ? 'Evidenza server firmata'
+                : 'Bozza evidenza server pronta'
+              : sessionPersistenceStatus === 'error'
+                ? 'Persistenza sessione non riuscita'
+                : sessionPersistenceStatus === 'syncing'
+                  ? 'Firma server-side in corso'
+                  : 'Persistenza sessione in corso'}
+          </strong>
+          {persistenceStatusMessage && <span>{persistenceStatusMessage}</span>}
+          {persistedSessionId && <span>Sessione server: {persistedSessionId}</span>}
+          {serverEvidenceHash && <span>Hash server: {serverEvidenceHash}</span>}
         </div>
       )}
     </section>

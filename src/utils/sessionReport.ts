@@ -9,6 +9,7 @@ export interface TrainingSessionReport {
     mode: GameState['courseSession']['evidenceMode'];
     authority: 'local-preview' | 'server-signed';
     warning: string | null;
+    serverHash: string | null;
   };
   product: {
     name: string;
@@ -65,6 +66,18 @@ const createLocalIntegrityHash = (content: string) => {
   return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 };
 
+const createIntegrityHashSource = (report: TrainingSessionReport) => ({
+  ...report,
+  integrityHash: '',
+  evidence: {
+    ...report.evidence,
+    mode: 'canonical',
+    authority: 'canonical',
+    warning: null,
+    serverHash: null,
+  },
+});
+
 const buildPhaseScoreMap = (phaseScores: PhaseScore[]) =>
   new Map<GamePhase, PhaseScore>(phaseScores.map((phaseScore) => [phaseScore.phase, phaseScore]));
 
@@ -91,6 +104,7 @@ export const buildTrainingSessionReport = (state: GameState): TrainingSessionRep
         state.courseSession.evidenceMode === 'server-signed'
           ? null
           : 'Evidenza locale non firmata dal server. Per audit globale e immutabilita serve archivio backend.',
+      serverHash: state.serverEvidenceHash,
     },
     product: {
       name: 'MARS-Safe Ponteggio Trainer',
@@ -138,7 +152,7 @@ export const buildTrainingSessionReport = (state: GameState): TrainingSessionRep
     })),
   };
 
-  report.integrityHash = createLocalIntegrityHash(JSON.stringify(report));
+  report.integrityHash = createLocalIntegrityHash(JSON.stringify(createIntegrityHashSource(report)));
   return report;
 };
 
@@ -148,6 +162,7 @@ export const buildTrainingSessionCsv = (report: TrainingSessionReport) => {
     ['Generato il', report.generatedAt],
     ['Hash integrita locale', report.integrityHash],
     ['Modalita evidenza', report.evidence.mode],
+    ['Hash server', report.evidence.serverHash],
     ['Avviso evidenza', report.evidence.warning],
     ['Sessione', report.session.sessionId],
     ['Scenario seed', report.session.scenarioSeed],

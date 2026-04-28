@@ -35,9 +35,15 @@ npm run lint
 npm run hash-password -- "my-password"
 ```
 
+## Backend setup
+
+- Configure `MARS_AUTH_SECRET`, `MARS_EVIDENCE_SECRET`, `MARS_AUTH_ACCOUNTS_JSON`, and `DATABASE_URL` in local or Vercel environments.
+- The persistent training archive schema is versioned in [database/training-schema.sql](./database/training-schema.sql).
+- Production is designed around Vercel Functions plus Neon/Postgres; preview and local environments need their own `DATABASE_URL`.
+
 ## Notes
 
 - The app is still a client-rendered SPA, but `/api/*` is now reserved for Vercel Functions and excluded from the SPA fallback rewrite.
 - Premium access can no longer be unlocked from `localStorage`; role and license state are hydrated from the backend contract.
-- Global session visibility is not yet persistent because a database-backed evidence archive has not been connected yet.
-- Use `.env.example` as the starting point for `MARS_AUTH_SECRET` and `MARS_AUTH_ACCOUNTS_JSON` in local or Vercel environments.
+- The session archive is persistent only when `DATABASE_URL` is configured; without it, auth still works but evidence stays local-only.
+- Use [.env.example](./.env.example) as the starting point for auth and database variables.
