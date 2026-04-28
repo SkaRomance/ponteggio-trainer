@@ -529,7 +529,7 @@ export const finalizeSession = async (
     `,
   ]);
 
-  const finalizeResult = transactionResults.at(-1) as SqlRow[] | undefined;
+  const finalizeResult = transactionResults[transactionResults.length - 1] as SqlRow[] | undefined;
   const updatedCount = Number(finalizeResult?.[0]?.updated_count ?? 0);
   const rows = await runSessionsQuery('WHERE sessions.id = $1', [persistedSessionId]);
   if (updatedCount === 0 && rows[0]) {
