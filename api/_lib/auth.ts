@@ -515,49 +515,38 @@ const resolveAccountForLogin = async (
   return toAuthAccountRecord(bootstrapAccount);
 };
 
-const resolveAccountFromToken = async (
-  config: ReturnType<typeof getConfig>,
-  payload: SessionTokenPayload,
-) => {
-  if (isDatabaseConfigured() && payload.sessionId) {
+const resolveAccountFromToken = async (payload: SessionTokenPayload) => {
+  if (isDatabaseConfigured()) {
     try {
+      if (!payload.sessionId) {
+        return null;
+      }
+
       const session = await getAuthSession(payload.sessionId);
       if (!session || session.revokedAt || new Date(session.expiresAt).getTime() <= Date.now()) {
         return null;
       }
 
-      const account = await getAuthAccountByUserId(session.userId);
-      if (!account || !account.authActive) {
+      const databaseAccount = await getAuthAccountByUserId(session.userId);
+      if (!databaseAccount || !databaseAccount.authActive) {
         return null;
       }
 
       const orgMismatch =
-        session.organizationId !== account.organizationId &&
-        !(session.organizationId === null && account.organizationId === null);
-      if (orgMismatch || session.issuedRole !== account.role) {
+        session.organizationId !== databaseAccount.organizationId &&
+        !(session.organizationId === null && databaseAccount.organizationId === null);
+      if (
+        orgMismatch ||
+        session.issuedRole !== databaseAccount.role ||
+        normalizeEmail(databaseAccount.email) !== normalizeEmail(payload.email) ||
+        databaseAccount.userId !== payload.userId
+      ) {
         return null;
       }
 
-      return account;
+      return databaseAccount;
     } catch {
-      // Fall back to signed bootstrap payload while auth schema is rolling out.
-    }
-  }
-
-  if (isDatabaseConfigured()) {
-    try {
-      const databaseAccount = await getAuthAccountByUserId(payload.userId);
-      if (
-        databaseAccount &&
-        databaseAccount.authActive &&
-        normalizeEmail(databaseAccount.email) === normalizeEmail(payload.email) &&
-        databaseAccount.role === payload.role &&
-        databaseAccount.organizationId === payload.organizationId
-      ) {
-        return databaseAccount;
-      }
-    } catch {
-      // Continue with bootstrap fallback below.
+      return null;
     }
   }
 
@@ -614,7 +603,7 @@ export const getAccessResponseForRequest = async (request: Request) => {
     };
   }
 
-  const account = await resolveAccountFromToken(config, payload);
+  const account = await resolveAccountFromToken(payload);
   if (!account) {
     return {
       configured: true,
@@ -770,9 +759,29 @@ export const authenticateCredentials = async (request: Request, email: string, p
     if (isDatabaseConfigured()) {
       const { expiresAt } = await buildSessionToken(config, account, null);
       sessionId = await createAuthSession(account, expiresAt);
+      if (!sessionId) {
+        throw new Error('Impossibile creare una sessione autenticata revocabile.');
+      }
     }
   } catch {
-    sessionId = null;
+    await recordAuditEvent({
+      actorUserId: account.userId,
+      organizationId: account.organizationId,
+      action: 'auth.login.failure',
+      objectType: 'auth',
+      objectId: account.userId,
+      details: {
+        ...(await createAuditDetails(request, normalizedEmail)),
+        reason: 'session_create_failed',
+      },
+    }).catch(() => {});
+
+    return {
+      ok: false,
+      status: 503,
+      message: 'Autenticazione temporaneamente non disponibile. Riprova tra poco.',
+      cookie: null,
+    };
   }
 
   const { token } = await buildSessionToken(config, account, sessionId);

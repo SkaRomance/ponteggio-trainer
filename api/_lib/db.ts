@@ -660,30 +660,6 @@ export const registerFailedLogin = async (bucketKey: string) => {
   const now = new Date();
   const nowIso = now.toISOString();
   const rows = await sql`
-    SELECT attempt_count, window_started_at, blocked_until
-    FROM training.auth_rate_limits
-    WHERE bucket_key = ${bucketKey}
-    LIMIT 1
-  `;
-  const row = rows[0];
-  const windowStart = parseIsoDate(row?.window_started_at);
-  const blockedUntil = parseIsoDate(row?.blocked_until);
-
-  const windowStillOpen =
-    windowStart !== null && now.getTime() - new Date(windowStart).getTime() < LOGIN_RATE_LIMIT_WINDOW_MS;
-  const nextAttemptCount =
-    row && windowStillOpen
-      ? (typeof row.attempt_count === 'number' ? row.attempt_count : Number(row.attempt_count ?? 0)) + 1
-      : 1;
-  const nextWindowStartedAt = windowStillOpen && windowStart ? windowStart : nowIso;
-  const nextBlockedUntil =
-    blockedUntil && new Date(blockedUntil).getTime() > now.getTime()
-      ? blockedUntil
-      : nextAttemptCount >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS
-        ? new Date(now.getTime() + LOGIN_RATE_LIMIT_BLOCK_MS).toISOString()
-        : null;
-
-  await sql`
     INSERT INTO training.auth_rate_limits (
       bucket_key,
       attempt_count,
@@ -694,22 +670,51 @@ export const registerFailedLogin = async (bucketKey: string) => {
     )
     VALUES (
       ${bucketKey},
-      ${nextAttemptCount},
-      ${nextWindowStartedAt},
-      ${nextBlockedUntil},
+      1,
+      ${nowIso},
+      NULL,
       ${nowIso},
       now()
     )
     ON CONFLICT (bucket_key)
     DO UPDATE SET
-      attempt_count = EXCLUDED.attempt_count,
-      window_started_at = EXCLUDED.window_started_at,
-      blocked_until = EXCLUDED.blocked_until,
-      last_attempt_at = EXCLUDED.last_attempt_at,
+      attempt_count = CASE
+        WHEN training.auth_rate_limits.window_started_at >
+          (${nowIso}::timestamptz - ${LOGIN_RATE_LIMIT_WINDOW_MS} * interval '1 millisecond')
+          THEN training.auth_rate_limits.attempt_count + 1
+        ELSE 1
+      END,
+      window_started_at = CASE
+        WHEN training.auth_rate_limits.window_started_at >
+          (${nowIso}::timestamptz - ${LOGIN_RATE_LIMIT_WINDOW_MS} * interval '1 millisecond')
+          THEN training.auth_rate_limits.window_started_at
+        ELSE ${nowIso}::timestamptz
+      END,
+      blocked_until = CASE
+        WHEN training.auth_rate_limits.blocked_until IS NOT NULL
+          AND training.auth_rate_limits.blocked_until > ${nowIso}::timestamptz
+          THEN training.auth_rate_limits.blocked_until
+        WHEN (
+          CASE
+            WHEN training.auth_rate_limits.window_started_at >
+              (${nowIso}::timestamptz - ${LOGIN_RATE_LIMIT_WINDOW_MS} * interval '1 millisecond')
+              THEN training.auth_rate_limits.attempt_count + 1
+            ELSE 1
+          END
+        ) >= ${LOGIN_RATE_LIMIT_MAX_ATTEMPTS}
+          THEN ${nowIso}::timestamptz + ${LOGIN_RATE_LIMIT_BLOCK_MS} * interval '1 millisecond'
+        ELSE NULL
+      END,
+      last_attempt_at = ${nowIso},
       updated_at = now()
+    RETURNING attempt_count, blocked_until
   `;
 
-  return toRateLimitState(nextAttemptCount, nextBlockedUntil);
+  const row = rows[0];
+  return toRateLimitState(
+    typeof row?.attempt_count === 'number' ? row.attempt_count : Number(row?.attempt_count ?? 0),
+    parseIsoDate(row?.blocked_until),
+  );
 };
 
 export const clearLoginRateLimit = async (bucketKey: string) => {
