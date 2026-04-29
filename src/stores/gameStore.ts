@@ -23,6 +23,12 @@ import type {
   PersistedSessionsResponse,
   PersistenceSyncStatus,
 } from '../models/persistence';
+import type {
+  AdminLicenseMutationResponse,
+  AdminLicenseUpsertPayload,
+  AdminTenantSummary,
+  AdminTenantsResponse,
+} from '../models/platformOps';
 
 export type GamePhase =
   | 'menu'
@@ -135,6 +141,13 @@ export interface GameState {
   persistedSessionsStatus: PersistenceSyncStatus;
   persistedSessionsMessage: string | null;
   loadPersistedSessions: () => Promise<void>;
+  adminTenantQuery: string;
+  adminTenants: AdminTenantSummary[];
+  adminTenantsStatus: PersistenceSyncStatus;
+  adminTenantsMessage: string | null;
+  loadAdminTenants: (query?: string) => Promise<void>;
+  issueAdminLicense: (payload: AdminLicenseUpsertPayload) => Promise<boolean>;
+  revokeAdminLicense: (licenseId: string) => Promise<boolean>;
   createPersistedSessionDraft: () => Promise<void>;
   finalizePersistedSession: (status?: 'finalized' | 'aborted') => Promise<void>;
 
@@ -421,6 +434,42 @@ const normalizePersistedSessionsResponse = (payload: unknown): PersistedSessions
   };
 };
 
+const normalizeAdminTenantsResponse = (payload: unknown): AdminTenantsResponse => {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      tenants: [],
+      status: 'unavailable',
+      message: 'Risposta tenant non valida.',
+      query: '',
+    };
+  }
+
+  const record = payload as Record<string, unknown>;
+  return {
+    tenants: Array.isArray(record.tenants) ? (record.tenants as AdminTenantSummary[]) : [],
+    status: (record.status as AdminTenantsResponse['status']) ?? 'ready',
+    message: typeof record.message === 'string' ? record.message : null,
+    query: typeof record.query === 'string' ? record.query : '',
+  };
+};
+
+const normalizeAdminLicenseMutationResponse = (payload: unknown): AdminLicenseMutationResponse => {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      tenant: null,
+      license: null,
+      message: 'Risposta licenza non valida.',
+    };
+  }
+
+  const record = payload as Record<string, unknown>;
+  return {
+    tenant: (record.tenant as AdminTenantSummary | null) ?? null,
+    license: (record.license as AdminLicenseMutationResponse['license']) ?? null,
+    message: typeof record.message === 'string' ? record.message : null,
+  };
+};
+
 export const useGameStore = create<GameState>((set, get) => {
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
   const initialAccessResponse = createAccessApiResponse();
@@ -473,6 +522,10 @@ export const useGameStore = create<GameState>((set, get) => {
           persistedSessions: [],
           persistedSessionsStatus: 'idle',
           persistedSessionsMessage: null,
+          adminTenantQuery: '',
+          adminTenants: [],
+          adminTenantsStatus: 'idle',
+          adminTenantsMessage: null,
           courseSession: withAccessContext(
             {
               ...state.courseSession,
@@ -491,6 +544,10 @@ export const useGameStore = create<GameState>((set, get) => {
             persistedSessions: [],
             persistedSessionsStatus: 'idle',
             persistedSessionsMessage: null,
+            adminTenantQuery: '',
+            adminTenants: [],
+            adminTenantsStatus: 'idle',
+            adminTenantsMessage: null,
           });
         }
       } catch (error) {
@@ -506,6 +563,10 @@ export const useGameStore = create<GameState>((set, get) => {
           persistedSessions: [],
           persistedSessionsStatus: 'error',
           persistedSessionsMessage: 'Archivio sessioni non disponibile.',
+          adminTenantQuery: '',
+          adminTenants: [],
+          adminTenantsStatus: 'error',
+          adminTenantsMessage: 'Control plane admin non disponibile.',
         });
       }
     },
@@ -568,6 +629,10 @@ export const useGameStore = create<GameState>((set, get) => {
         persistedSessions: [],
         persistedSessionsStatus: 'idle',
         persistedSessionsMessage: null,
+        adminTenantQuery: '',
+        adminTenants: [],
+        adminTenantsStatus: 'idle',
+        adminTenantsMessage: null,
         courseSession: withAccessContext(
           {
             ...state.courseSession,
@@ -588,6 +653,10 @@ export const useGameStore = create<GameState>((set, get) => {
     persistedSessions: [],
     persistedSessionsStatus: 'idle',
     persistedSessionsMessage: null,
+    adminTenantQuery: '',
+    adminTenants: [],
+    adminTenantsStatus: 'idle',
+    adminTenantsMessage: null,
     loadPersistedSessions: async () => {
       const state = get();
       if (state.authIdentity.status !== 'authenticated' || state.sessionsArchiveStatus !== 'ready') {
@@ -632,6 +701,141 @@ export const useGameStore = create<GameState>((set, get) => {
           persistedSessionsMessage:
             error instanceof Error ? error.message : 'Errore durante il caricamento archivio sessioni.',
         });
+      }
+    },
+    loadAdminTenants: async (query) => {
+      const state = get();
+      const nextQuery = query ?? state.adminTenantQuery;
+      if (state.authIdentity.status !== 'authenticated' || state.authIdentity.role !== 'admin') {
+        set({
+          adminTenantQuery: nextQuery,
+          adminTenants: [],
+          adminTenantsStatus: 'idle',
+          adminTenantsMessage: null,
+        });
+        return;
+      }
+
+      set({
+        adminTenantQuery: nextQuery,
+        adminTenantsStatus: 'loading',
+        adminTenantsMessage: null,
+      });
+
+      try {
+        const search = nextQuery.trim();
+        const endpoint = search ? `/api/admin/tenants?query=${encodeURIComponent(search)}` : '/api/admin/tenants';
+        const response = await fetch(endpoint, {
+          credentials: 'same-origin',
+        });
+        const payload = normalizeAdminTenantsResponse(await response.json());
+
+        if (!response.ok && response.status !== 501) {
+          throw new Error(payload.message ?? 'Impossibile caricare il catalogo tenant.');
+        }
+
+        set({
+          adminTenantQuery: payload.query,
+          adminTenants: payload.tenants,
+          adminTenantsStatus: payload.status === 'ready' ? 'ready' : 'error',
+          adminTenantsMessage: payload.message,
+        });
+      } catch (error) {
+        set({
+          adminTenantsStatus: 'error',
+          adminTenantsMessage: error instanceof Error ? error.message : 'Errore durante il caricamento tenant.',
+        });
+      }
+    },
+    issueAdminLicense: async (payload) => {
+      const state = get();
+      if (state.authIdentity.status !== 'authenticated' || state.authIdentity.role !== 'admin') {
+        set({
+          adminTenantsStatus: 'error',
+          adminTenantsMessage: 'Solo un admin puo emettere o rinnovare licenze.',
+        });
+        return false;
+      }
+
+      set({
+        adminTenantsStatus: 'syncing',
+        adminTenantsMessage: null,
+      });
+
+      try {
+        const response = await fetch('/api/admin/licenses', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        const result = normalizeAdminLicenseMutationResponse(await response.json());
+        if (!response.ok) {
+          throw new Error(result.message ?? 'Impossibile emettere o rinnovare la licenza.');
+        }
+
+        set((currentState) => ({
+          adminTenantsStatus: 'ready',
+          adminTenantsMessage: result.message,
+          adminTenants: result.tenant
+            ? [
+                result.tenant,
+                ...currentState.adminTenants.filter((tenant) => tenant.id !== result.tenant?.id),
+              ].sort((left, right) => left.name.localeCompare(right.name, 'it'))
+            : currentState.adminTenants,
+        }));
+        return true;
+      } catch (error) {
+        set({
+          adminTenantsStatus: 'error',
+          adminTenantsMessage: error instanceof Error ? error.message : 'Errore durante l aggiornamento licenza.',
+        });
+        return false;
+      }
+    },
+    revokeAdminLicense: async (licenseId) => {
+      const state = get();
+      if (state.authIdentity.status !== 'authenticated' || state.authIdentity.role !== 'admin') {
+        set({
+          adminTenantsStatus: 'error',
+          adminTenantsMessage: 'Solo un admin puo revocare licenze.',
+        });
+        return false;
+      }
+
+      set({
+        adminTenantsStatus: 'syncing',
+        adminTenantsMessage: null,
+      });
+
+      try {
+        const response = await fetch(`/api/admin/licenses/${encodeURIComponent(licenseId)}/revoke`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        const result = normalizeAdminLicenseMutationResponse(await response.json());
+        if (!response.ok) {
+          throw new Error(result.message ?? 'Impossibile revocare la licenza.');
+        }
+
+        set((currentState) => ({
+          adminTenantsStatus: 'ready',
+          adminTenantsMessage: result.message,
+          adminTenants: result.tenant
+            ? currentState.adminTenants
+                .map((tenant) => (tenant.id === result.tenant?.id ? result.tenant : tenant))
+                .sort((left, right) => left.name.localeCompare(right.name, 'it'))
+            : currentState.adminTenants,
+        }));
+        return true;
+      } catch (error) {
+        set({
+          adminTenantsStatus: 'error',
+          adminTenantsMessage: error instanceof Error ? error.message : 'Errore durante la revoca licenza.',
+        });
+        return false;
       }
     },
     createPersistedSessionDraft: async () => {

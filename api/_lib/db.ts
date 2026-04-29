@@ -1,5 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import {
+  LICENSE_VALIDITY_YEARS,
+  addYears,
   createMissingLicense,
   type AuthIdentity,
   type LicenseEntitlement,
@@ -15,6 +17,7 @@ import type {
   PersistedEventInput,
   PersistedSessionSummary,
 } from '../../src/models/persistence.js';
+import type { AdminLicenseUpsertPayload, AdminTenantSummary } from '../../src/models/platformOps.js';
 
 type SqlRow = Record<string, unknown>;
 
@@ -126,6 +129,44 @@ const mapLicenseRow = (row: SqlRow): LicenseEntitlement => ({
   seats: typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0),
   features: parseFeatureValues(row.features) as LicenseEntitlement['features'],
   source: 'backend',
+});
+
+const mapCurrentLicenseFromTenantRow = (row: SqlRow): LicenseEntitlement | null => {
+  if (!row.license_id) return null;
+
+  return {
+    licenseId: String(row.license_id),
+    organizationId: String(row.organization_id),
+    organizationName: row.organization_name ? String(row.organization_name) : null,
+    plan: String(row.license_plan) as LicenseEntitlement['plan'],
+    status: String(row.license_status) as LicenseEntitlement['status'],
+    issuedAt: parseIsoDate(row.license_issued_at),
+    expiresAt: parseIsoDate(row.license_expires_at),
+    updatesUntil: parseIsoDate(row.license_updates_until),
+    seats: typeof row.license_seats === 'number' ? row.license_seats : Number(row.license_seats ?? 0),
+    features: parseFeatureValues(row.license_features) as LicenseEntitlement['features'],
+    source: 'backend',
+  };
+};
+
+const mapAdminTenantRow = (row: SqlRow): AdminTenantSummary => ({
+  id: String(row.organization_id),
+  name: String(row.organization_name),
+  activeMemberCount:
+    typeof row.active_member_count === 'number'
+      ? row.active_member_count
+      : Number(row.active_member_count ?? 0),
+  activeCustomerCount:
+    typeof row.active_customer_count === 'number'
+      ? row.active_customer_count
+      : Number(row.active_customer_count ?? 0),
+  activeInstructorCount:
+    typeof row.active_instructor_count === 'number'
+      ? row.active_instructor_count
+      : Number(row.active_instructor_count ?? 0),
+  sessionCount: typeof row.session_count === 'number' ? row.session_count : Number(row.session_count ?? 0),
+  lastSessionAt: parseIsoDate(row.last_session_at),
+  currentLicense: mapCurrentLicenseFromTenantRow(row),
 });
 
 const mapAuthAccountRow = (row: SqlRow): AuthAccountRecord => ({
@@ -308,6 +349,56 @@ const buildAuthAccountQuery = (whereClause: string) => `
   ${whereClause}
 `;
 
+const buildTenantsQuery = (whereClause: string) => `
+  SELECT
+    organizations.id AS organization_id,
+    organizations.name AS organization_name,
+    COUNT(DISTINCT memberships.user_id) FILTER (WHERE memberships.active = true) AS active_member_count,
+    COUNT(DISTINCT memberships.user_id) FILTER (
+      WHERE memberships.active = true AND memberships.role = 'customer'
+    ) AS active_customer_count,
+    COUNT(DISTINCT memberships.user_id) FILTER (
+      WHERE memberships.active = true AND memberships.role = 'instructor'
+    ) AS active_instructor_count,
+    COUNT(DISTINCT sessions.id) AS session_count,
+    MAX(sessions.created_at) AS last_session_at,
+    current_license.id AS license_id,
+    current_license.plan AS license_plan,
+    current_license.status AS license_status,
+    current_license.issued_at AS license_issued_at,
+    current_license.expires_at AS license_expires_at,
+    current_license.updates_until AS license_updates_until,
+    current_license.seats AS license_seats,
+    current_license.features AS license_features
+  FROM training.organizations AS organizations
+  LEFT JOIN training.organization_memberships AS memberships
+    ON memberships.organization_id = organizations.id
+  LEFT JOIN training.training_sessions AS sessions
+    ON sessions.organization_id = organizations.id
+  LEFT JOIN LATERAL (
+    SELECT id, plan, status, issued_at, expires_at, updates_until, seats, features
+    FROM training.licenses
+    WHERE organization_id = organizations.id
+    ORDER BY COALESCE(expires_at, updated_at) DESC, updated_at DESC
+    LIMIT 1
+  ) AS current_license
+    ON true
+  ${whereClause}
+  GROUP BY
+    organizations.id,
+    organizations.name,
+    current_license.id,
+    current_license.plan,
+    current_license.status,
+    current_license.issued_at,
+    current_license.expires_at,
+    current_license.updates_until,
+    current_license.seats,
+    current_license.features
+  ORDER BY organizations.name ASC
+  LIMIT 50
+`;
+
 const createServerEvidenceDigest = async (value: string) => {
   if (!EVIDENCE_SECRET) {
     throw new Error('MARS_EVIDENCE_SECRET o MARS_AUTH_SECRET non configurato per la firma evidenze.');
@@ -335,6 +426,11 @@ const assertDatabaseConfigured = () => {
 const runSessionsQuery = async (whereClause: string, params: unknown[] = []) => {
   const sql = assertDatabaseConfigured();
   return sql.query(buildSessionsQuery(whereClause), params);
+};
+
+const runTenantsQuery = async (whereClause: string, params: unknown[] = []) => {
+  const sql = assertDatabaseConfigured();
+  return sql.query(buildTenantsQuery(whereClause), params);
 };
 
 const insertAuditEvent = async (event: AuditEventInput) => {
@@ -729,6 +825,199 @@ export const clearLoginRateLimit = async (bucketKey: string) => {
 
 export const recordAuditEvent = async (event: AuditEventInput) => {
   await insertAuditEvent(event);
+};
+
+export const listAdminTenants = async (query = '') => {
+  const normalizedQuery = query.trim();
+  const rows =
+    normalizedQuery.length > 0
+      ? await runTenantsQuery(
+          `
+          WHERE organizations.id ILIKE '%' || $1 || '%'
+             OR organizations.name ILIKE '%' || $1 || '%'
+        `,
+          [normalizedQuery],
+        )
+      : await runTenantsQuery('');
+
+  return rows.map(mapAdminTenantRow);
+};
+
+export const getAdminTenantById = async (organizationId: string) => {
+  const rows = await runTenantsQuery('WHERE organizations.id = $1', [organizationId]);
+  return rows[0] ? mapAdminTenantRow(rows[0]) : null;
+};
+
+export const createOrRenewTenantLicense = async (
+  actor: Pick<AuthIdentity, 'userId'>,
+  payload: AdminLicenseUpsertPayload,
+) => {
+  const sql = assertDatabaseConfigured();
+  const issuedAtDate = payload.issuedAt ? new Date(payload.issuedAt) : new Date();
+  if (!Number.isFinite(issuedAtDate.getTime())) {
+    throw new Error('Data emissione licenza non valida.');
+  }
+
+  const issuedAtIso = issuedAtDate.toISOString();
+  const expiresAt = addYears(issuedAtDate, LICENSE_VALIDITY_YEARS).toISOString();
+  const updatesUntil = expiresAt;
+  const licenseId = `lic_${payload.organizationId}_${issuedAtIso.slice(0, 10).replace(/-/g, '')}_${crypto.randomUUID().slice(0, 8)}`;
+  const features = JSON.stringify(payload.features);
+
+  const transactionResults = await sql.transaction([
+    sql`
+      INSERT INTO training.organizations (id, name, created_at, updated_at)
+      VALUES (${payload.organizationId}, ${payload.organizationName}, now(), now())
+      ON CONFLICT (id)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        updated_at = now()
+    `,
+    sql`
+      UPDATE training.licenses
+      SET status = 'revoked', updated_at = now()
+      WHERE organization_id = ${payload.organizationId}
+        AND status IN ('active', 'pending')
+    `,
+    sql`
+      INSERT INTO training.licenses (
+        id,
+        organization_id,
+        plan,
+        status,
+        issued_at,
+        expires_at,
+        updates_until,
+        seats,
+        features,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${licenseId},
+        ${payload.organizationId},
+        ${payload.plan},
+        'active',
+        ${issuedAtIso},
+        ${expiresAt},
+        ${updatesUntil},
+        ${payload.seats},
+        ${features}::jsonb,
+        now(),
+        now()
+      )
+      RETURNING id, organization_id, plan, status, issued_at, expires_at, updates_until, seats, features
+    `,
+    sql`
+      INSERT INTO training.audit_log (id, actor_user_id, organization_id, action, object_type, object_id, details)
+      VALUES (
+        ${`audit_${crypto.randomUUID()}`},
+        ${actor.userId},
+        ${payload.organizationId},
+        'admin.license.upsert',
+        'license',
+        ${licenseId},
+        ${JSON.stringify({
+          organizationName: payload.organizationName,
+          plan: payload.plan,
+          seats: payload.seats,
+          features: payload.features,
+          expiresAt,
+        })}::jsonb
+      )
+    `,
+  ]);
+
+  const insertedLicenseRows = transactionResults[2] as SqlRow[] | undefined;
+  const insertedLicense = insertedLicenseRows?.[0];
+  const fallbackLicense: LicenseEntitlement = {
+    licenseId,
+    organizationId: payload.organizationId,
+    organizationName: payload.organizationName,
+    plan: payload.plan,
+    status: 'active',
+    issuedAt: issuedAtIso,
+    expiresAt,
+    updatesUntil,
+    seats: payload.seats,
+    features: payload.features,
+    source: 'backend',
+  };
+
+  if (insertedLicense) {
+    fallbackLicense.licenseId = String(insertedLicense.id);
+    fallbackLicense.organizationId = String(insertedLicense.organization_id);
+    fallbackLicense.issuedAt = parseIsoDate(insertedLicense.issued_at);
+    fallbackLicense.expiresAt = parseIsoDate(insertedLicense.expires_at);
+    fallbackLicense.updatesUntil = parseIsoDate(insertedLicense.updates_until);
+    fallbackLicense.seats =
+      typeof insertedLicense.seats === 'number' ? insertedLicense.seats : Number(insertedLicense.seats ?? 0);
+    fallbackLicense.features = parseFeatureValues(insertedLicense.features) as LicenseEntitlement['features'];
+  }
+
+  const tenant = await getAdminTenantById(payload.organizationId).catch(() => null);
+  return {
+    tenant,
+    license: tenant?.currentLicense ?? fallbackLicense,
+  };
+};
+
+export const revokeTenantLicense = async (
+  actor: Pick<AuthIdentity, 'userId'>,
+  licenseId: string,
+) => {
+  const sql = assertDatabaseConfigured();
+  const rows = await sql`
+    WITH updated_license AS (
+      UPDATE training.licenses
+      SET status = 'revoked', updated_at = now()
+      WHERE id = ${licenseId}
+      RETURNING id, organization_id, plan, status, issued_at, expires_at, updates_until, seats, features
+    ),
+    inserted_audit AS (
+      INSERT INTO training.audit_log (id, actor_user_id, organization_id, action, object_type, object_id, details)
+      SELECT
+        ${`audit_${crypto.randomUUID()}`},
+        ${actor.userId},
+        updated_license.organization_id,
+        'admin.license.revoke',
+        'license',
+        updated_license.id,
+        ${JSON.stringify({})}::jsonb
+      FROM updated_license
+    )
+    SELECT *
+    FROM updated_license
+  `;
+
+  const row = rows[0];
+  if (!row) {
+    return {
+      tenant: null,
+      license: null,
+    };
+  }
+
+  const organizationId = String(row.organization_id);
+  const fallbackLicense: LicenseEntitlement = {
+    licenseId: String(row.id),
+    organizationId,
+    organizationName: null,
+    plan: String(row.plan) as LicenseEntitlement['plan'],
+    status: 'revoked',
+    issuedAt: parseIsoDate(row.issued_at),
+    expiresAt: parseIsoDate(row.expires_at),
+    updatesUntil: parseIsoDate(row.updates_until),
+    seats: typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0),
+    features: parseFeatureValues(row.features) as LicenseEntitlement['features'],
+    source: 'backend',
+  };
+
+  const tenant = await getAdminTenantById(organizationId).catch(() => null);
+  return {
+    tenant,
+    license: tenant?.currentLicense ?? fallbackLicense,
+  };
 };
 
 export const createDraftSession = async (

@@ -5,6 +5,7 @@ import { formatDate, formatRole } from '../../models/accessControl';
 import AccessStatusPanel from './AccessStatusPanel';
 import CourseSessionPanel from './CourseSessionPanel';
 import EvidenceSessionsPanel from './EvidenceSessionsPanel';
+import PlatformOpsPanel from './PlatformOpsPanel';
 
 export default function StartMenu() {
   const {
@@ -68,6 +69,7 @@ export default function StartMenu() {
         </div>
 
         <AccessStatusPanel />
+        <PlatformOpsPanel />
         <EvidenceSessionsPanel />
         <CourseSessionPanel />
 
