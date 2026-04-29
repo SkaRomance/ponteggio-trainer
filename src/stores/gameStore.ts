@@ -24,10 +24,12 @@ import type {
   PersistenceSyncStatus,
 } from '../models/persistence';
 import type {
-  AdminLicenseMutationResponse,
   AdminLicenseUpsertPayload,
   AdminTenantSummary,
-  AdminTenantsResponse,
+} from '../models/platformOps';
+import {
+  normalizeAdminLicenseMutationResponse,
+  normalizeAdminTenantsResponse,
 } from '../models/platformOps';
 
 export type GamePhase =
@@ -431,42 +433,6 @@ const normalizePersistedSessionsResponse = (payload: unknown): PersistedSessions
     sessions: [],
     status: 'unavailable',
     message: 'Risposta archivio sessioni non valida.',
-  };
-};
-
-const normalizeAdminTenantsResponse = (payload: unknown): AdminTenantsResponse => {
-  if (!payload || typeof payload !== 'object') {
-    return {
-      tenants: [],
-      status: 'unavailable',
-      message: 'Risposta tenant non valida.',
-      query: '',
-    };
-  }
-
-  const record = payload as Record<string, unknown>;
-  return {
-    tenants: Array.isArray(record.tenants) ? (record.tenants as AdminTenantSummary[]) : [],
-    status: (record.status as AdminTenantsResponse['status']) ?? 'ready',
-    message: typeof record.message === 'string' ? record.message : null,
-    query: typeof record.query === 'string' ? record.query : '',
-  };
-};
-
-const normalizeAdminLicenseMutationResponse = (payload: unknown): AdminLicenseMutationResponse => {
-  if (!payload || typeof payload !== 'object') {
-    return {
-      tenant: null,
-      license: null,
-      message: 'Risposta licenza non valida.',
-    };
-  }
-
-  const record = payload as Record<string, unknown>;
-  return {
-    tenant: (record.tenant as AdminTenantSummary | null) ?? null,
-    license: (record.license as AdminLicenseMutationResponse['license']) ?? null,
-    message: typeof record.message === 'string' ? record.message : null,
   };
 };
 

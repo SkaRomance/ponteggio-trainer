@@ -56,6 +56,17 @@ const parseIsoDate = (value: unknown) => (value ? new Date(String(value)).toISOS
 const parseFeatureValues = (value: unknown) =>
   Array.isArray(value) ? value : JSON.parse(String(value ?? '[]'));
 
+const currentLicensePrioritySql = (alias: string) => `
+  CASE
+    WHEN ${alias}.status = 'active' AND ${alias}.expires_at IS NOT NULL AND ${alias}.expires_at <= now() THEN 3
+    WHEN ${alias}.status = 'active' THEN 0
+    WHEN ${alias}.status = 'pending' THEN 1
+    WHEN ${alias}.status = 'expired' THEN 2
+    WHEN ${alias}.status = 'revoked' THEN 4
+    ELSE 5
+  END
+`;
+
 const inferPasswordAlgorithm = (
   passwordHash: string | null | undefined,
   explicit?: string | null,
@@ -339,10 +350,25 @@ const buildAuthAccountQuery = (whereClause: string) => `
   LEFT JOIN training.organizations AS organizations
     ON organizations.id = memberships.organization_id
   LEFT JOIN LATERAL (
-    SELECT id, plan, status, issued_at, expires_at, updates_until, seats, features
-    FROM training.licenses
-    WHERE organization_id = memberships.organization_id
-    ORDER BY COALESCE(expires_at, updated_at) DESC, updated_at DESC
+    SELECT
+      term.id,
+      term.plan,
+      CASE
+        WHEN term.status = 'active' AND term.expires_at IS NOT NULL AND term.expires_at <= now()
+          THEN 'expired'
+        ELSE term.status
+      END AS status,
+      term.issued_at,
+      term.expires_at,
+      term.updates_until,
+      term.seats,
+      term.features
+    FROM training.licenses AS term
+    WHERE term.organization_id = memberships.organization_id
+    ORDER BY
+      ${currentLicensePrioritySql('term')},
+      term.issued_at DESC NULLS LAST,
+      term.updated_at DESC
     LIMIT 1
   ) AS licenses
     ON true
@@ -376,10 +402,25 @@ const buildTenantsQuery = (whereClause: string) => `
   LEFT JOIN training.training_sessions AS sessions
     ON sessions.organization_id = organizations.id
   LEFT JOIN LATERAL (
-    SELECT id, plan, status, issued_at, expires_at, updates_until, seats, features
-    FROM training.licenses
-    WHERE organization_id = organizations.id
-    ORDER BY COALESCE(expires_at, updated_at) DESC, updated_at DESC
+    SELECT
+      term.id,
+      term.plan,
+      CASE
+        WHEN term.status = 'active' AND term.expires_at IS NOT NULL AND term.expires_at <= now()
+          THEN 'expired'
+        ELSE term.status
+      END AS status,
+      term.issued_at,
+      term.expires_at,
+      term.updates_until,
+      term.seats,
+      term.features
+    FROM training.licenses AS term
+    WHERE term.organization_id = organizations.id
+    ORDER BY
+      ${currentLicensePrioritySql('term')},
+      term.issued_at DESC NULLS LAST,
+      term.updated_at DESC
     LIMIT 1
   ) AS current_license
     ON true
@@ -577,13 +618,18 @@ export const getLicenseFromDatabase = async (organizationId: string | null) => {
   if (!organizationId || !DATABASE_URL) return createMissingLicense();
 
   const sql = assertDatabaseConfigured();
-  const rows = await sql`
+  const rows = await sql.query(
+    `
     SELECT
       licenses.id,
       licenses.organization_id,
       organizations.name AS organization_name,
       licenses.plan,
-      licenses.status,
+      CASE
+        WHEN licenses.status = 'active' AND licenses.expires_at IS NOT NULL AND licenses.expires_at <= now()
+          THEN 'expired'
+        ELSE licenses.status
+      END AS status,
       licenses.issued_at,
       licenses.expires_at,
       licenses.updates_until,
@@ -592,10 +638,15 @@ export const getLicenseFromDatabase = async (organizationId: string | null) => {
     FROM training.licenses AS licenses
     LEFT JOIN training.organizations AS organizations
       ON organizations.id = licenses.organization_id
-    WHERE organization_id = ${organizationId}
-    ORDER BY COALESCE(expires_at, updated_at) DESC, updated_at DESC
+    WHERE organization_id = $1
+    ORDER BY
+      ${currentLicensePrioritySql('licenses')},
+      licenses.issued_at DESC NULLS LAST,
+      licenses.updated_at DESC
     LIMIT 1
-  `;
+  `,
+    [organizationId],
+  );
 
   const row = rows[0];
   if (!row) return createMissingLicense();

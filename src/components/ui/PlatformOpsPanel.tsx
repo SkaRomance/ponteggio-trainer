@@ -1,25 +1,40 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
+  AlertTriangle,
   Ban,
   Building2,
   CalendarRange,
+  Clock3,
+  Layers3,
   RefreshCw,
   Search,
   ShieldCheck,
+  ShieldAlert,
   Sparkles,
   Users,
 } from 'lucide-react';
 import { useGameStore } from '../../stores/gameStore';
 import {
+  LICENSE_VALIDITY_YEARS,
   formatDate,
   formatLicenseStatus,
   formatPlan,
   formatRole,
   type LicenseFeature,
 } from '../../models/accessControl';
+import {
+  getAdminTenantDaysRemaining,
+  getAdminTenantTone,
+  isAdminTenantExpiringSoon,
+  sortAdminTenants,
+  summarizeAdminTenants,
+  type AdminTenantFilter,
+  type AdminTenantSort,
+} from '../../models/platformOps';
 
 const defaultFeatures: LicenseFeature[] = ['full_course', 'session_sync', 'updates', 'vr_runtime'];
+const warningWindowDays = 90;
 
 const featureLabels: Record<LicenseFeature, string> = {
   full_course: 'Percorso completo',
@@ -27,6 +42,23 @@ const featureLabels: Record<LicenseFeature, string> = {
   admin_sessions: 'Audit globale',
   updates: 'Aggiornamenti',
   vr_runtime: 'Runtime VR',
+};
+
+const filterLabels: Record<AdminTenantFilter, string> = {
+  all: 'Tutti',
+  active: 'Attivi',
+  expiring: 'In scadenza',
+  missing: 'Assenti',
+  expired: 'Scaduti',
+  revoked: 'Revocati',
+};
+
+const sortLabels: Record<AdminTenantSort, string> = {
+  risk: 'Priorita rischio',
+  expiry: 'Scadenza',
+  sessions: 'Volume sessioni',
+  members: 'Membri attivi',
+  name: 'Nome tenant',
 };
 
 const formatDateTime = (value: string | null) => {
@@ -39,6 +71,31 @@ const formatDateTime = (value: string | null) => {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+};
+
+const formatDaysRemaining = (daysRemaining: number | null) => {
+  if (daysRemaining === null) return 'Scadenza non definita';
+  if (daysRemaining < 0) return `Scaduta da ${Math.abs(daysRemaining)} gg`;
+  if (daysRemaining === 0) return 'Scade oggi';
+  return `Scade tra ${daysRemaining} gg`;
+};
+
+const getAttentionCopy = (
+  status: ReturnType<typeof getAdminTenantTone>,
+  daysRemaining: number | null,
+  sessionCount: number,
+) => {
+  if (status === 'danger') {
+    if (daysRemaining !== null && daysRemaining < 0) return 'Licenza non valida, rinnovo prioritario.';
+    return 'Tenant fuori copertura o senza licenza attiva.';
+  }
+  if (status === 'warning') {
+    return `Finestra di rinnovo aperta nei prossimi ${warningWindowDays} giorni.`;
+  }
+  if (sessionCount === 0) {
+    return 'Tenant pronto ma senza sessioni archiviate lato server.';
+  }
+  return 'Tenant in linea con il presidio operativo corrente.';
 };
 
 export default function PlatformOpsPanel() {
@@ -61,11 +118,17 @@ export default function PlatformOpsPanel() {
   const [organizationName, setOrganizationName] = useState('');
   const [plan, setPlan] = useState<'trial' | 'professional' | 'enterprise'>('professional');
   const [seats, setSeats] = useState('10');
+  const [issuedAt, setIssuedAt] = useState('');
   const [features, setFeatures] = useState<LicenseFeature[]>(defaultFeatures);
+  const [statusFilter, setStatusFilter] = useState<AdminTenantFilter>('all');
+  const [sortMode, setSortMode] = useState<AdminTenantSort>('risk');
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [localMessageTone, setLocalMessageTone] = useState<'info' | 'error'>('error');
   const isAuthenticated = authIdentity.status === 'authenticated';
   const isAdmin = authIdentity.role === 'admin';
   const isBusy = adminTenantsStatus === 'loading' || adminTenantsStatus === 'syncing';
+  const deferredAdminTenants = useDeferredValue(adminTenants);
 
   useEffect(() => {
     setSearchInput(adminTenantQuery);
@@ -90,6 +153,48 @@ export default function PlatformOpsPanel() {
     [persistedSessions.length, sessionsArchiveStatus],
   );
 
+  const summary = useMemo(
+    () => summarizeAdminTenants(deferredAdminTenants, warningWindowDays),
+    [deferredAdminTenants],
+  );
+
+  const filteredTenants = useMemo(
+    () =>
+      sortAdminTenants(
+        deferredAdminTenants.filter((tenant) => {
+          if (statusFilter === 'all') return true;
+          if (statusFilter === 'expiring') return isAdminTenantExpiringSoon(tenant, warningWindowDays);
+          return (tenant.currentLicense?.status ?? 'missing') === statusFilter;
+        }),
+        sortMode,
+        warningWindowDays,
+      ),
+    [deferredAdminTenants, sortMode, statusFilter],
+  );
+
+  const attentionTenants = useMemo(
+    () =>
+      sortAdminTenants(
+        deferredAdminTenants.filter(
+          (tenant) =>
+            getAdminTenantTone(tenant, warningWindowDays) !== 'success' || tenant.sessionCount === 0,
+        ),
+        'risk',
+        warningWindowDays,
+      ).slice(0, 5),
+    [deferredAdminTenants],
+  );
+
+  const selectedTenant = useMemo(() => {
+    if (!selectedTenantId) return attentionTenants[0] ?? filteredTenants[0] ?? null;
+    return (
+      deferredAdminTenants.find((tenant) => tenant.id === selectedTenantId) ??
+      attentionTenants[0] ??
+      filteredTenants[0] ??
+      null
+    );
+  }, [attentionTenants, deferredAdminTenants, filteredTenants, selectedTenantId]);
+
   const toggleFeature = (feature: LicenseFeature) => {
     setFeatures((current) =>
       current.includes(feature) ? current.filter((entry) => entry !== feature) : [...current, feature],
@@ -101,7 +206,24 @@ export default function PlatformOpsPanel() {
     setOrganizationName('');
     setPlan('professional');
     setSeats('10');
+    setIssuedAt('');
     setFeatures(defaultFeatures);
+  };
+
+  const prefillTenantForm = (tenantId: string) => {
+    const tenant = deferredAdminTenants.find((entry) => entry.id === tenantId);
+    if (!tenant) return;
+
+    const currentLicense = tenant.currentLicense;
+    setSelectedTenantId(tenant.id);
+    setOrganizationId(tenant.id);
+    setOrganizationName(tenant.name);
+    setPlan(currentLicense?.plan ?? 'professional');
+    setSeats(String(currentLicense?.seats ?? Math.max(10, tenant.activeMemberCount)));
+    setIssuedAt('');
+    setFeatures(currentLicense?.features?.length ? currentLicense.features : defaultFeatures);
+    setLocalMessageTone('info');
+    setLocalMessage(`Tenant ${tenant.name} caricato nel form rinnovo.`);
   };
 
   const handleSearch = async (event?: FormEvent<HTMLFormElement>) => {
@@ -115,8 +237,20 @@ export default function PlatformOpsPanel() {
     setLocalMessage(null);
 
     const normalizedSeats = Number(seats);
-    if (!organizationId.trim() || !organizationName.trim() || !Number.isFinite(normalizedSeats) || normalizedSeats < 0) {
+    if (
+      !organizationId.trim() ||
+      !organizationName.trim() ||
+      !Number.isFinite(normalizedSeats) ||
+      normalizedSeats < 0
+    ) {
+      setLocalMessageTone('error');
       setLocalMessage('Compila tenant, nome e posti con valori validi.');
+      return;
+    }
+
+    if (!features.length) {
+      setLocalMessageTone('error');
+      setLocalMessage('Seleziona almeno una feature licenza.');
       return;
     }
 
@@ -125,6 +259,7 @@ export default function PlatformOpsPanel() {
       organizationName: organizationName.trim(),
       plan,
       seats: normalizedSeats,
+      issuedAt: issuedAt || null,
       features,
     });
     if (ok) {
@@ -133,7 +268,13 @@ export default function PlatformOpsPanel() {
     }
   };
 
-  const renewTenantLicense = async (tenantId: string, tenantName: string, tenantPlan: typeof plan, tenantSeats: number, tenantFeatures: LicenseFeature[]) => {
+  const renewTenantLicense = async (
+    tenantId: string,
+    tenantName: string,
+    tenantPlan: typeof plan,
+    tenantSeats: number,
+    tenantFeatures: LicenseFeature[],
+  ) => {
     setLocalMessage(null);
     const ok = await issueAdminLicense({
       organizationId: tenantId,
@@ -166,7 +307,8 @@ export default function PlatformOpsPanel() {
           <span className="platform-ops-pill">Accesso richiesto</span>
         </div>
         <p className="platform-ops-copy">
-          Accedi come admin, cliente o docente per vedere tenant, stato licenza triennale e operazioni consentite.
+          Accedi come admin, cliente o docente per vedere tenant, stato licenza triennale e
+          operazioni consentite.
         </p>
       </section>
     );
@@ -186,7 +328,9 @@ export default function PlatformOpsPanel() {
         <div className="platform-ops-grid compact">
           <div className="platform-ops-card">
             <span className="detail-label">Organizzazione</span>
-            <strong className="detail-value">{licenseEntitlement.organizationName || 'Tenant non assegnato'}</strong>
+            <strong className="detail-value">
+              {licenseEntitlement.organizationName || 'Tenant non assegnato'}
+            </strong>
             <p>{licenseEntitlement.organizationId || 'Nessun tenant attivo nel contesto autenticato.'}</p>
           </div>
           <div className="platform-ops-card">
@@ -240,26 +384,255 @@ export default function PlatformOpsPanel() {
       <div className="platform-ops-header">
         <div>
           <span className="summary-label">Control plane admin</span>
-          <h2>Tenant, rinnovi triennali e revoche</h2>
+          <h2>Radar licenze, rinnovi e presidio tenant</h2>
         </div>
-        <span className="platform-ops-pill">{adminTenants.length} tenant caricati</span>
+        <span className="platform-ops-pill">
+          {filteredTenants.length}/{adminTenants.length} tenant visibili
+        </span>
       </div>
 
-      <div className="platform-ops-grid">
+      <div className="platform-ops-summary-grid">
+        <article className="platform-summary-card">
+          <span className="summary-label">Tenant</span>
+          <strong className="summary-value">{summary.totalTenants}</strong>
+          <p>Catalogo tenant caricato nel control plane.</p>
+        </article>
+        <article className="platform-summary-card success">
+          <span className="summary-label">Licenze attive</span>
+          <strong className="summary-value">{summary.activeLicenses}</strong>
+          <p>Termini attivi oggi sul perimetro formativo.</p>
+        </article>
+        <article className="platform-summary-card warning">
+          <span className="summary-label">Scadenze &lt;= 90 gg</span>
+          <strong className="summary-value">{summary.expiringSoon}</strong>
+          <p>Finestra di rinnovo da presidiare subito.</p>
+        </article>
+        <article className="platform-summary-card danger">
+          <span className="summary-label">Attention required</span>
+          <strong className="summary-value">{summary.attentionRequired}</strong>
+          <p>Tenant fuori copertura o con licenza fragile.</p>
+        </article>
+        <article className="platform-summary-card">
+          <span className="summary-label">Posti assegnati</span>
+          <strong className="summary-value">{summary.totalSeats}</strong>
+          <p>{summary.activeMembers} membri attivi registrati.</p>
+        </article>
+        <article className="platform-summary-card">
+          <span className="summary-label">Sessioni archiviate</span>
+          <strong className="summary-value">{summary.totalSessions}</strong>
+          <p>Volume server-side disponibile all audit.</p>
+        </article>
+      </div>
+
+      <div className="platform-ops-admin-grid">
+        <div className="platform-ops-stack">
+          <div className="platform-ops-card">
+            <div className="platform-card-heading">
+              <Search size={18} aria-hidden="true" />
+              <strong>Ricerca e filtri operativi</strong>
+            </div>
+
+            <form className="platform-search-form" onSubmit={handleSearch}>
+              <label className="course-field">
+                <span>Query backend</span>
+                <input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Nome o ID tenant"
+                />
+              </label>
+
+              <div className="platform-filter-grid">
+                <label className="course-field">
+                  <span>Filtro stato</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value as AdminTenantFilter)}
+                  >
+                    {Object.entries(filterLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="course-field">
+                  <span>Ordina per</span>
+                  <select
+                    value={sortMode}
+                    onChange={(event) => setSortMode(event.target.value as AdminTenantSort)}
+                  >
+                    {Object.entries(sortLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="platform-ops-actions inline">
+                <button type="submit" className="btn-secondary" disabled={isBusy}>
+                  <Search size={18} aria-hidden="true" />
+                  Cerca
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void loadAdminTenants(searchInput)}
+                  disabled={isBusy}
+                >
+                  <RefreshCw size={18} aria-hidden="true" />
+                  Aggiorna
+                </button>
+              </div>
+            </form>
+
+            <div className="platform-filter-pills" aria-label="Stato radar licenze">
+              <button
+                type="button"
+                className={`platform-filter-pill${statusFilter === 'all' ? ' active' : ''}`}
+                onClick={() => setStatusFilter('all')}
+              >
+                <Layers3 size={14} aria-hidden="true" />
+                Tutto il perimetro
+              </button>
+              <button
+                type="button"
+                className={`platform-filter-pill${statusFilter === 'expiring' ? ' active warning' : ' warning'}`}
+                onClick={() => setStatusFilter('expiring')}
+              >
+                <Clock3 size={14} aria-hidden="true" />
+                Scadenze vicine
+              </button>
+              <button
+                type="button"
+                className={`platform-filter-pill${statusFilter === 'missing' ? ' active danger' : ' danger'}`}
+                onClick={() => setStatusFilter('missing')}
+              >
+                <ShieldAlert size={14} aria-hidden="true" />
+                Nessuna licenza
+              </button>
+            </div>
+
+            <div className="platform-ops-feedback" role="status" aria-live="polite">
+              <p>
+                {adminTenantsMessage ??
+                  'Usa il control plane per creare termini triennali, filtrare le scadenze e richiamare rapidamente i tenant nel form rinnovo.'}
+              </p>
+              <span>{isBusy ? 'Operazione in corso' : 'Database tenant live'}</span>
+            </div>
+          </div>
+
+          <div className="platform-ops-card">
+            <div className="platform-card-heading">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <strong>Radar scadenze e criticita</strong>
+            </div>
+
+            {attentionTenants.length === 0 ? (
+              <div className="platform-tenant-empty">
+                <ShieldCheck size={20} aria-hidden="true" />
+                <strong>Nessuna criticita immediata</strong>
+                <p>Tutti i tenant caricati risultano coperti o senza segnali prioritari sul radar.</p>
+              </div>
+            ) : (
+              <div className="platform-radar-list">
+                {attentionTenants.map((tenant) => {
+                  const tone = getAdminTenantTone(tenant, warningWindowDays);
+                  const daysRemaining = getAdminTenantDaysRemaining(tenant);
+                  return (
+                    <button
+                      key={tenant.id}
+                      type="button"
+                      className={`platform-radar-item${selectedTenant?.id === tenant.id ? ' selected' : ''}`}
+                      data-tone={tone}
+                      onClick={() => setSelectedTenantId(tenant.id)}
+                    >
+                      <div>
+                        <strong>{tenant.name}</strong>
+                        <span>{formatDaysRemaining(daysRemaining)}</span>
+                      </div>
+                      <small>{getAttentionCopy(tone, daysRemaining, tenant.sessionCount)}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedTenant && (
+              <div className="platform-selected-tenant" data-tone={getAdminTenantTone(selectedTenant, warningWindowDays)}>
+                <div className="platform-selected-header">
+                  <div>
+                    <span className="summary-label">Tenant in focus</span>
+                    <h3>{selectedTenant.name}</h3>
+                  </div>
+                  <span className="platform-ops-pill">
+                    {formatDaysRemaining(getAdminTenantDaysRemaining(selectedTenant))}
+                  </span>
+                </div>
+                <p>
+                  {getAttentionCopy(
+                    getAdminTenantTone(selectedTenant, warningWindowDays),
+                    getAdminTenantDaysRemaining(selectedTenant),
+                    selectedTenant.sessionCount,
+                  )}
+                </p>
+                <div className="platform-ops-actions inline">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => prefillTenantForm(selectedTenant.id)}
+                  >
+                    <Sparkles size={18} aria-hidden="true" />
+                    Carica nel form
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() =>
+                      void renewTenantLicense(
+                        selectedTenant.id,
+                        selectedTenant.name,
+                        selectedTenant.currentLicense?.plan ?? 'professional',
+                        selectedTenant.currentLicense?.seats ?? Math.max(10, selectedTenant.activeMemberCount),
+                        selectedTenant.currentLicense?.features ?? defaultFeatures,
+                      )
+                    }
+                    disabled={isBusy}
+                  >
+                    <CalendarRange size={18} aria-hidden="true" />
+                    Rinnova subito
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <form className="platform-ops-card platform-ops-form" onSubmit={handleIssueLicense}>
           <div className="platform-card-heading">
             <Sparkles size={18} aria-hidden="true" />
-            <strong>Nuovo termine licenza</strong>
+            <strong>Emissione o rinnovo triennale</strong>
           </div>
 
           <label className="course-field">
             <span>Tenant ID</span>
-            <input value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} placeholder="org_centro_roma" />
+            <input
+              value={organizationId}
+              onChange={(event) => setOrganizationId(event.target.value)}
+              placeholder="org_centro_roma"
+            />
           </label>
 
           <label className="course-field">
             <span>Nome tenant</span>
-            <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} placeholder="Centro Formazione Roma" />
+            <input
+              value={organizationName}
+              onChange={(event) => setOrganizationName(event.target.value)}
+              placeholder="Centro Formazione Roma"
+            />
           </label>
 
           <div className="platform-form-inline">
@@ -276,6 +649,19 @@ export default function PlatformOpsPanel() {
               <span>Posti</span>
               <input value={seats} onChange={(event) => setSeats(event.target.value)} inputMode="numeric" />
             </label>
+          </div>
+
+          <div className="platform-form-inline">
+            <label className="course-field">
+              <span>Emissione</span>
+              <input type="date" value={issuedAt} onChange={(event) => setIssuedAt(event.target.value)} />
+            </label>
+
+            <div className="platform-mini-note">
+              <span className="detail-label">Regola</span>
+              <strong className="detail-value">Durata {LICENSE_VALIDITY_YEARS} anni</strong>
+              <p>Se la data e vuota, il backend usa il timestamp corrente.</p>
+            </div>
           </div>
 
           <div className="platform-feature-editor" aria-label="Feature licenza">
@@ -300,59 +686,35 @@ export default function PlatformOpsPanel() {
               <CalendarRange size={18} aria-hidden="true" />
               Emetti / rinnova 3 anni
             </button>
+            <button type="button" className="btn-secondary" onClick={resetLicenseForm} disabled={isBusy}>
+              <RefreshCw size={18} aria-hidden="true" />
+              Reset form
+            </button>
           </div>
         </form>
-
-        <div className="platform-ops-card">
-          <div className="platform-card-heading">
-            <Search size={18} aria-hidden="true" />
-            <strong>Ricerca tenant</strong>
-          </div>
-
-          <form className="platform-search-form" onSubmit={handleSearch}>
-            <label className="course-field">
-              <span>Query</span>
-              <input
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Nome o ID tenant"
-              />
-            </label>
-            <div className="platform-ops-actions inline">
-              <button type="submit" className="btn-secondary" disabled={isBusy}>
-                <Search size={18} aria-hidden="true" />
-                Cerca
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => void loadAdminTenants(searchInput)} disabled={isBusy}>
-                <RefreshCw size={18} aria-hidden="true" />
-                Aggiorna
-              </button>
-            </div>
-          </form>
-
-          <div className="platform-ops-feedback" role="status" aria-live="polite">
-            <p>
-              {adminTenantsMessage ??
-                'Usa il control plane per creare termini triennali, rinnovare tenant esistenti e revocare il termine corrente.'}
-            </p>
-            <span>{isBusy ? 'Operazione in corso' : 'Database tenant live'}</span>
-          </div>
-        </div>
       </div>
 
       <div className="platform-tenant-list">
-        {adminTenants.length === 0 ? (
+        {filteredTenants.length === 0 ? (
           <div className="platform-tenant-empty">
             <Building2 size={20} aria-hidden="true" />
             <strong>Nessun tenant da mostrare</strong>
-            <p>Il database tenant e ancora vuoto oppure la ricerca corrente non ha restituito risultati.</p>
+            <p>Rivedi filtro e query oppure aggiorna il catalogo tenant.</p>
           </div>
         ) : (
-          adminTenants.map((tenant) => {
+          filteredTenants.map((tenant) => {
             const currentLicense = tenant.currentLicense;
             const tenantFeatures = currentLicense?.features ?? defaultFeatures;
+            const tone = getAdminTenantTone(tenant, warningWindowDays);
+            const daysRemaining = getAdminTenantDaysRemaining(tenant);
+            const seatCapacity = currentLicense?.seats ?? 0;
+            const seatFill =
+              seatCapacity > 0
+                ? Math.min(100, Math.round((tenant.activeMemberCount / seatCapacity) * 100))
+                : 0;
+
             return (
-              <article key={tenant.id} className="platform-tenant-card">
+              <article key={tenant.id} className="platform-tenant-card" data-tone={tone}>
                 <div className="platform-tenant-top">
                   <div>
                     <span className="platform-tenant-name">{tenant.name}</span>
@@ -360,18 +722,24 @@ export default function PlatformOpsPanel() {
                       {tenant.id} · ultima attivita {formatDateTime(tenant.lastSessionAt)}
                     </p>
                   </div>
-                  <span className={`platform-ops-pill${currentLicense?.status === 'active' ? ' success' : ''}`}>
-                    {currentLicense
-                      ? `${formatPlan(currentLicense.plan)} · ${formatLicenseStatus(currentLicense.status)}`
-                      : 'Licenza assente'}
-                  </span>
+                  <div className="platform-tenant-status-stack">
+                    <span className={`platform-ops-pill${currentLicense?.status === 'active' ? ' success' : ''}`}>
+                      {currentLicense
+                        ? `${formatPlan(currentLicense.plan)} · ${formatLicenseStatus(currentLicense.status)}`
+                        : 'Licenza assente'}
+                    </span>
+                    <span className={`platform-tenant-chip ${tone}`}>{formatDaysRemaining(daysRemaining)}</span>
+                  </div>
                 </div>
 
                 <div className="platform-tenant-grid">
                   <div className="platform-tenant-detail">
                     <span className="detail-label">Membri attivi</span>
                     <strong className="detail-value">{tenant.activeMemberCount}</strong>
-                    <p><Users size={14} aria-hidden="true" /> {tenant.activeCustomerCount} clienti · {tenant.activeInstructorCount} docenti</p>
+                    <p>
+                      <Users size={14} aria-hidden="true" /> {tenant.activeCustomerCount} clienti ·{' '}
+                      {tenant.activeInstructorCount} docenti
+                    </p>
                   </div>
                   <div className="platform-tenant-detail">
                     <span className="detail-label">Sessioni</span>
@@ -390,6 +758,20 @@ export default function PlatformOpsPanel() {
                   </div>
                 </div>
 
+                <div className="platform-seat-meter" aria-label={`Occupazione posti ${tenant.name}`}>
+                  <div className="platform-seat-meter-copy">
+                    <span className="detail-label">Copertura posti</span>
+                    <strong className="detail-value">
+                      {seatCapacity > 0 ? `${tenant.activeMemberCount}/${seatCapacity}` : 'Posti non assegnati'}
+                    </strong>
+                  </div>
+                  <div className="platform-seat-meter-bar">
+                    <span className="platform-seat-meter-fill" style={{ width: `${seatFill}%` }} />
+                  </div>
+                </div>
+
+                <p className="platform-tenant-note">{getAttentionCopy(tone, daysRemaining, tenant.sessionCount)}</p>
+
                 <div className="platform-ops-feature-list compact" aria-label={`Entitlement ${tenant.name}`}>
                   {tenantFeatures.map((feature) => (
                     <span key={`${tenant.id}-${feature}`} className="platform-feature-chip">
@@ -403,19 +785,27 @@ export default function PlatformOpsPanel() {
                   <button
                     type="button"
                     className="btn-secondary"
+                    onClick={() => prefillTenantForm(tenant.id)}
+                  >
+                    <Sparkles size={18} aria-hidden="true" />
+                    Carica nel form
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
                     onClick={() =>
                       void renewTenantLicense(
                         tenant.id,
                         tenant.name,
                         currentLicense?.plan ?? 'professional',
-                        currentLicense?.seats ?? 10,
+                        currentLicense?.seats ?? Math.max(10, tenant.activeMemberCount),
                         tenantFeatures,
                       )
                     }
                     disabled={isBusy}
                   >
                     <CalendarRange size={18} aria-hidden="true" />
-                    Rinnova 3 anni
+                    {currentLicense ? 'Rinnova 3 anni' : 'Emetti licenza'}
                   </button>
                   {currentLicense && (
                     <button
@@ -436,9 +826,13 @@ export default function PlatformOpsPanel() {
       </div>
 
       {localMessage && (
-        <div className="platform-ops-feedback error" role="status" aria-live="polite">
+        <div
+          className={`platform-ops-feedback${localMessageTone === 'error' ? ' error' : ' info'}`}
+          role="status"
+          aria-live="polite"
+        >
           <p>{localMessage}</p>
-          <span>Verifica i dati inseriti</span>
+          <span>{localMessageTone === 'error' ? 'Verifica i dati inseriti' : 'Form aggiornato'}</span>
         </div>
       )}
     </section>
