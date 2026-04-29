@@ -43,6 +43,13 @@ export interface PersistedSessionsResponse {
   message: string | null;
 }
 
+export interface PersistedSessionDetailResponse {
+  session: PersistedSessionSummary;
+  report: Record<string, unknown> | null;
+  serverHash: string | null;
+  message?: string | null;
+}
+
 export interface PersistedEventInput {
   id: string;
   eventIndex: number;

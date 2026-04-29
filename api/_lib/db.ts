@@ -17,7 +17,13 @@ import type {
   PersistedEventInput,
   PersistedSessionSummary,
 } from '../../src/models/persistence.js';
-import type { AdminLicenseUpsertPayload, AdminTenantSummary } from '../../src/models/platformOps.js';
+import type {
+  AdminAuditTimelineEntry,
+  AdminLicenseHistoryEntry,
+  AdminLicenseUpsertPayload,
+  AdminTenantHistoryResponse,
+  AdminTenantSummary,
+} from '../../src/models/platformOps.js';
 
 type SqlRow = Record<string, unknown>;
 
@@ -55,6 +61,16 @@ const parseIsoDate = (value: unknown) => (value ? new Date(String(value)).toISOS
 
 const parseFeatureValues = (value: unknown) =>
   Array.isArray(value) ? value : JSON.parse(String(value ?? '[]'));
+
+const parseJsonRecord = (value: unknown) => {
+  if (!value) return {} as Record<string, unknown>;
+  if (typeof value === 'object' && value !== null) return value as Record<string, unknown>;
+  try {
+    return JSON.parse(String(value)) as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+};
 
 const currentLicensePrioritySql = (alias: string) => `
   CASE
@@ -178,6 +194,34 @@ const mapAdminTenantRow = (row: SqlRow): AdminTenantSummary => ({
   sessionCount: typeof row.session_count === 'number' ? row.session_count : Number(row.session_count ?? 0),
   lastSessionAt: parseIsoDate(row.last_session_at),
   currentLicense: mapCurrentLicenseFromTenantRow(row),
+});
+
+const mapAdminLicenseHistoryRow = (row: SqlRow): AdminLicenseHistoryEntry => ({
+  licenseId: String(row.id),
+  organizationId: String(row.organization_id),
+  organizationName: row.organization_name ? String(row.organization_name) : null,
+  plan: String(row.plan) as AdminLicenseHistoryEntry['plan'],
+  status: String(row.status) as AdminLicenseHistoryEntry['status'],
+  issuedAt: parseIsoDate(row.issued_at),
+  expiresAt: parseIsoDate(row.expires_at),
+  updatesUntil: parseIsoDate(row.updates_until),
+  seats: typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0),
+  features: parseFeatureValues(row.features) as AdminLicenseHistoryEntry['features'],
+  createdAt: parseIsoDate(row.created_at),
+  updatedAt: parseIsoDate(row.updated_at),
+});
+
+const mapAdminAuditTimelineRow = (row: SqlRow): AdminAuditTimelineEntry => ({
+  id: String(row.id),
+  action: String(row.action),
+  objectType: String(row.object_type),
+  objectId: row.object_id ? String(row.object_id) : null,
+  actorUserId: row.actor_user_id ? String(row.actor_user_id) : null,
+  actorDisplayName: row.actor_display_name ? String(row.actor_display_name) : null,
+  actorEmail: row.actor_email ? String(row.actor_email) : null,
+  organizationId: row.organization_id ? String(row.organization_id) : null,
+  createdAt: parseIsoDate(row.created_at),
+  details: parseJsonRecord(row.details),
 });
 
 const mapAuthAccountRow = (row: SqlRow): AuthAccountRecord => ({
@@ -897,6 +941,92 @@ export const listAdminTenants = async (query = '') => {
 export const getAdminTenantById = async (organizationId: string) => {
   const rows = await runTenantsQuery('WHERE organizations.id = $1', [organizationId]);
   return rows[0] ? mapAdminTenantRow(rows[0]) : null;
+};
+
+export const listAdminTenantLicenseHistory = async (organizationId: string, limit = 12) => {
+  const sql = assertDatabaseConfigured();
+  const rows = await sql.query(
+    `
+    SELECT
+      licenses.id,
+      licenses.organization_id,
+      organizations.name AS organization_name,
+      licenses.plan,
+      CASE
+        WHEN licenses.status = 'active' AND licenses.expires_at IS NOT NULL AND licenses.expires_at <= now()
+          THEN 'expired'
+        ELSE licenses.status
+      END AS status,
+      licenses.issued_at,
+      licenses.expires_at,
+      licenses.updates_until,
+      licenses.seats,
+      licenses.features,
+      licenses.created_at,
+      licenses.updated_at
+    FROM training.licenses AS licenses
+    LEFT JOIN training.organizations AS organizations
+      ON organizations.id = licenses.organization_id
+    WHERE licenses.organization_id = $1
+    ORDER BY licenses.issued_at DESC NULLS LAST, licenses.updated_at DESC
+    LIMIT $2
+  `,
+    [organizationId, Math.max(1, Math.min(limit, 50))],
+  );
+
+  return rows.map(mapAdminLicenseHistoryRow);
+};
+
+export const listOrganizationAuditTimeline = async (organizationId: string, limit = 20) => {
+  const sql = assertDatabaseConfigured();
+  const rows = await sql.query(
+    `
+    SELECT
+      audit_log.id,
+      audit_log.action,
+      audit_log.object_type,
+      audit_log.object_id,
+      audit_log.actor_user_id,
+      users.display_name AS actor_display_name,
+      users.email AS actor_email,
+      audit_log.organization_id,
+      audit_log.details,
+      audit_log.created_at
+    FROM training.audit_log AS audit_log
+    LEFT JOIN training.users AS users
+      ON users.id = audit_log.actor_user_id
+    WHERE audit_log.organization_id = $1
+    ORDER BY audit_log.created_at DESC
+    LIMIT $2
+  `,
+    [organizationId, Math.max(1, Math.min(limit, 100))],
+  );
+
+  return rows.map(mapAdminAuditTimelineRow);
+};
+
+export const getAdminTenantHistory = async (
+  organizationId: string,
+  licenseLimit = 12,
+  auditLimit = 20,
+): Promise<AdminTenantHistoryResponse> => {
+  const [tenant, licenses, auditEvents] = await Promise.all([
+    getAdminTenantById(organizationId),
+    listAdminTenantLicenseHistory(organizationId, licenseLimit),
+    listOrganizationAuditTimeline(organizationId, auditLimit),
+  ]);
+
+  return {
+    tenant,
+    licenses,
+    auditEvents,
+    message:
+      tenant && (licenses.length > 0 || auditEvents.length > 0)
+        ? null
+        : tenant
+          ? 'Storico tenant disponibile ma ancora poco popolato.'
+          : 'Tenant non trovato.',
+  };
 };
 
 export const createOrRenewTenantLicense = async (

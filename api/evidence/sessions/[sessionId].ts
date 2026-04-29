@@ -1,5 +1,9 @@
 import { getAccessResponseForRequest, json } from '../../_lib/auth.js';
-import { getSessionDetailByPersistedId, isDatabaseConfigured } from '../../_lib/db.js';
+import {
+  getSessionDetailByPersistedId,
+  isDatabaseConfigured,
+  recordAuditEvent,
+} from '../../_lib/db.js';
 
 export const config = {
   runtime: 'edge',
@@ -42,6 +46,19 @@ export default async function handler(request: Request) {
   ) {
     return json({ message: 'Sessione non accessibile per il profilo cliente corrente.' }, { status: 403 });
   }
+
+  await recordAuditEvent({
+    actorUserId: accessResponse.identity.userId,
+    organizationId: detail.session.organizationId,
+    action: accessResponse.identity.role === 'admin' ? 'admin.session.detail.read' : 'session.detail.read',
+    objectType: 'training_session',
+    objectId: detail.session.id,
+    details: {
+      accessRole: accessResponse.identity.role,
+      evidenceMode: detail.session.evidenceMode,
+      persistedStatus: detail.session.status,
+    },
+  }).catch(() => {});
 
   return json(detail, { status: 200 });
 }

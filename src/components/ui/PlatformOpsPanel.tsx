@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Ban,
   Building2,
@@ -27,8 +28,10 @@ import {
   getAdminTenantDaysRemaining,
   getAdminTenantTone,
   isAdminTenantExpiringSoon,
+  normalizeAdminTenantHistoryResponse,
   sortAdminTenants,
   summarizeAdminTenants,
+  type AdminTenantHistoryResponse,
   type AdminTenantFilter,
   type AdminTenantSort,
 } from '../../models/platformOps';
@@ -98,6 +101,33 @@ const getAttentionCopy = (
   return 'Tenant in linea con il presidio operativo corrente.';
 };
 
+const formatAuditAction = (action: string) => {
+  switch (action) {
+    case 'admin.license.upsert':
+      return 'Rinnovo o emissione licenza';
+    case 'admin.license.revoke':
+      return 'Revoca licenza';
+    case 'admin.tenant.history.read':
+      return 'Lettura storico tenant';
+    case 'session.create':
+      return 'Creazione sessione persistita';
+    case 'session.finalize':
+      return 'Finalizzazione sessione';
+    default:
+      return action.replace(/\./g, ' ');
+  }
+};
+
+const formatAuditDetails = (details: Record<string, unknown>) => {
+  const entries = Object.entries(details).filter(([, value]) => value !== null && value !== '');
+  if (entries.length === 0) return 'Nessun dettaglio aggiuntivo.';
+
+  return entries
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+    .join(' · ');
+};
+
 export default function PlatformOpsPanel() {
   const {
     authIdentity,
@@ -123,6 +153,14 @@ export default function PlatformOpsPanel() {
   const [statusFilter, setStatusFilter] = useState<AdminTenantFilter>('all');
   const [sortMode, setSortMode] = useState<AdminTenantSort>('risk');
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [tenantHistory, setTenantHistory] = useState<AdminTenantHistoryResponse>({
+    tenant: null,
+    licenses: [],
+    auditEvents: [],
+    message: null,
+  });
+  const [tenantHistoryStatus, setTenantHistoryStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [tenantHistoryMessage, setTenantHistoryMessage] = useState<string | null>(null);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [localMessageTone, setLocalMessageTone] = useState<'info' | 'error'>('error');
   const isAuthenticated = authIdentity.status === 'authenticated';
@@ -194,6 +232,52 @@ export default function PlatformOpsPanel() {
       null
     );
   }, [attentionTenants, deferredAdminTenants, filteredTenants, selectedTenantId]);
+
+  useEffect(() => {
+    if (!isAdmin || !selectedTenant) {
+      setTenantHistory({ tenant: null, licenses: [], auditEvents: [], message: null });
+      setTenantHistoryStatus('idle');
+      setTenantHistoryMessage(null);
+      return;
+    }
+
+    let cancelled = false;
+    setTenantHistoryStatus('loading');
+    setTenantHistoryMessage(null);
+
+    void fetch(`/api/admin/tenants/${encodeURIComponent(selectedTenant.id)}/history`, {
+      credentials: 'same-origin',
+    })
+      .then(async (response) => {
+        const payload = normalizeAdminTenantHistoryResponse(await response.json());
+        if (!response.ok) {
+          throw new Error(payload.message ?? 'Impossibile caricare lo storico tenant.');
+        }
+        if (cancelled) return;
+
+        setTenantHistory(payload);
+        setTenantHistoryStatus('ready');
+        setTenantHistoryMessage(payload.message);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+
+        setTenantHistory({
+          tenant: selectedTenant,
+          licenses: [],
+          auditEvents: [],
+          message: null,
+        });
+        setTenantHistoryStatus('error');
+        setTenantHistoryMessage(
+          error instanceof Error ? error.message : 'Errore durante il caricamento dello storico tenant.',
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, selectedTenant]);
 
   const toggleFeature = (feature: LicenseFeature) => {
     setFeatures((current) =>
@@ -693,6 +777,135 @@ export default function PlatformOpsPanel() {
           </div>
         </form>
       </div>
+
+      {selectedTenant && (
+        <div className="platform-history-grid">
+          <section className="platform-ops-card" aria-label="Storico termini licenza">
+            <div className="platform-card-heading">
+              <Clock3 size={18} aria-hidden="true" />
+              <strong>Storico termini licenza</strong>
+            </div>
+
+            <div
+              className={`platform-ops-feedback${
+                tenantHistoryStatus === 'error' ? ' error' : tenantHistoryStatus === 'ready' ? ' info' : ''
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              <p>
+                {tenantHistoryStatus === 'loading'
+                  ? 'Caricamento termini licenza e timeline tenant in corso.'
+                  : tenantHistoryMessage ??
+                    'Ogni rinnovo genera un nuovo termine storico, mantenendo il tenant auditabile nel tempo.'}
+              </p>
+              <span>{selectedTenant.name}</span>
+            </div>
+
+            <div className="platform-history-list">
+              {tenantHistoryStatus === 'loading' && tenantHistory.licenses.length === 0 ? (
+                <div className="platform-tenant-empty">
+                  <RefreshCw size={20} aria-hidden="true" />
+                  <strong>Caricamento storico</strong>
+                  <p>Recupero dei termini licenza associati al tenant selezionato.</p>
+                </div>
+              ) : tenantHistory.licenses.length === 0 ? (
+                <div className="platform-tenant-empty">
+                  <ShieldAlert size={20} aria-hidden="true" />
+                  <strong>Nessun termine disponibile</strong>
+                  <p>Il tenant non ha ancora una cronologia licenze nel backend corrente.</p>
+                </div>
+              ) : (
+                tenantHistory.licenses.map((license) => {
+                  const isCurrent = selectedTenant.currentLicense?.licenseId === license.licenseId;
+                  return (
+                    <article key={license.licenseId} className="platform-history-card">
+                      <div className="platform-history-top">
+                        <div>
+                          <strong>{formatPlan(license.plan)}</strong>
+                          <p>{license.licenseId}</p>
+                        </div>
+                        <span className={`platform-tenant-chip ${license.status === 'active' ? 'success' : license.status === 'pending' ? 'warning' : 'danger'}`}>
+                          {isCurrent ? 'Termine corrente · ' : ''}
+                          {formatLicenseStatus(license.status)}
+                        </span>
+                      </div>
+
+                      <div className="platform-history-grid-inline">
+                        <div>
+                          <span className="detail-label">Emissione</span>
+                          <strong className="detail-value">{formatDate(license.issuedAt)}</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Scadenza</span>
+                          <strong className="detail-value">{formatDate(license.expiresAt)}</strong>
+                        </div>
+                        <div>
+                          <span className="detail-label">Posti</span>
+                          <strong className="detail-value">{license.seats}</strong>
+                        </div>
+                      </div>
+
+                      <div className="platform-ops-feature-list compact" aria-label={`Feature termine ${license.licenseId}`}>
+                        {license.features.length ? (
+                          license.features.map((feature) => (
+                            <span key={`${license.licenseId}-${feature}`} className="platform-feature-chip">
+                              <ShieldCheck size={14} aria-hidden="true" />
+                              {featureLabels[feature]}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="platform-feature-chip warning">Nessuna feature attiva</span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="platform-ops-card" aria-label="Timeline audit tenant">
+            <div className="platform-card-heading">
+              <Activity size={18} aria-hidden="true" />
+              <strong>Timeline audit tenant</strong>
+            </div>
+
+            <div className="platform-timeline-list">
+              {tenantHistoryStatus === 'loading' && tenantHistory.auditEvents.length === 0 ? (
+                <div className="platform-tenant-empty">
+                  <RefreshCw size={20} aria-hidden="true" />
+                  <strong>Caricamento timeline</strong>
+                  <p>Recupero degli ultimi eventi audit lato server.</p>
+                </div>
+              ) : tenantHistory.auditEvents.length === 0 ? (
+                <div className="platform-tenant-empty">
+                  <Activity size={20} aria-hidden="true" />
+                  <strong>Nessun evento audit</strong>
+                  <p>Il tenant non ha ancora eventi amministrativi o di evidenza tracciati nella timeline.</p>
+                </div>
+              ) : (
+                tenantHistory.auditEvents.map((event) => (
+                  <article key={event.id} className="platform-timeline-item">
+                    <div className="platform-timeline-dot" aria-hidden="true" />
+                    <div className="platform-timeline-content">
+                      <div className="platform-timeline-top">
+                        <strong>{formatAuditAction(event.action)}</strong>
+                        <span>{formatDateTime(event.createdAt)}</span>
+                      </div>
+                      <p>
+                        {event.actorDisplayName || event.actorEmail || 'Sistema'} · {event.objectType}
+                        {event.objectId ? ` · ${event.objectId}` : ''}
+                      </p>
+                      <small>{formatAuditDetails(event.details)}</small>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       <div className="platform-tenant-list">
         {filteredTenants.length === 0 ? (

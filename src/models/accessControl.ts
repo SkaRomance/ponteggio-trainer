@@ -100,8 +100,10 @@ export const getAccessLevel = (identity: AuthIdentity, license: LicenseEntitleme
   return hasFeature(license, 'full_course') ? 'premium' : 'free';
 };
 
-export const canViewAllSessions = (identity: AuthIdentity, license: LicenseEntitlement) =>
-  identity.role === 'admin' || hasFeature(license, 'admin_sessions');
+export const canViewAllSessions = (identity: AuthIdentity, license: LicenseEntitlement) => {
+  void license;
+  return identity.role === 'admin';
+};
 
 export const getSessionMode = (
   identity: AuthIdentity,

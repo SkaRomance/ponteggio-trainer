@@ -39,6 +39,41 @@ export interface AdminLicenseMutationResponse {
   message: string | null;
 }
 
+export interface AdminLicenseHistoryEntry {
+  licenseId: string;
+  organizationId: string;
+  organizationName: string | null;
+  plan: LicensePlan;
+  status: LicenseStatus;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  updatesUntil: string | null;
+  seats: number;
+  features: LicenseFeature[];
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface AdminAuditTimelineEntry {
+  id: string;
+  action: string;
+  objectType: string;
+  objectId: string | null;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  actorEmail: string | null;
+  organizationId: string | null;
+  createdAt: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface AdminTenantHistoryResponse {
+  tenant: AdminTenantSummary | null;
+  licenses: AdminLicenseHistoryEntry[];
+  auditEvents: AdminAuditTimelineEntry[];
+  message: string | null;
+}
+
 export type AdminTenantFilter = 'all' | 'active' | 'expiring' | 'missing' | 'expired' | 'revoked';
 export type AdminTenantSort = 'risk' | 'name' | 'sessions' | 'members' | 'expiry';
 export type AdminTenantTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -166,6 +201,53 @@ const normalizeAdminTenantLicense = (
     seats: asNumber(readNested(record, 'seats')) ?? 0,
     features: normalizeLicenseFeatures(readNested(record, 'features')),
     source: 'backend',
+  };
+};
+
+const normalizeAdminLicenseHistoryEntry = (value: unknown): AdminLicenseHistoryEntry | null => {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const licenseId = asText(readNested(record, 'licenseId')) ?? asText(readNested(record, 'id'));
+  const organizationId = asText(readNested(record, 'organizationId'));
+  if (!licenseId || !organizationId) return null;
+
+  return {
+    licenseId,
+    organizationId,
+    organizationName: asText(readNested(record, 'organizationName')),
+    plan: normalizeLicensePlan(readNested(record, 'plan')),
+    status: normalizeLicenseStatus(readNested(record, 'status')),
+    issuedAt: asText(readNested(record, 'issuedAt')),
+    expiresAt: asText(readNested(record, 'expiresAt')),
+    updatesUntil: asText(readNested(record, 'updatesUntil')),
+    seats: asNumber(readNested(record, 'seats')) ?? 0,
+    features: normalizeLicenseFeatures(readNested(record, 'features')),
+    createdAt: asText(readNested(record, 'createdAt')),
+    updatedAt: asText(readNested(record, 'updatedAt')),
+  };
+};
+
+const normalizeAdminAuditTimelineEntry = (value: unknown): AdminAuditTimelineEntry | null => {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const id = asText(readNested(record, 'id'));
+  const action = asText(readNested(record, 'action'));
+  const objectType = asText(readNested(record, 'objectType'));
+  if (!id || !action || !objectType) return null;
+
+  return {
+    id,
+    action,
+    objectType,
+    objectId: asText(readNested(record, 'objectId')),
+    actorUserId: asText(readNested(record, 'actorUserId')),
+    actorDisplayName: asText(readNested(record, 'actorDisplayName')),
+    actorEmail: asText(readNested(record, 'actorEmail')),
+    organizationId: asText(readNested(record, 'organizationId')),
+    createdAt: asText(readNested(record, 'createdAt')),
+    details: asRecord(readNested(record, 'details')) ?? {},
   };
 };
 
@@ -334,6 +416,37 @@ export const normalizeAdminLicenseMutationResponse = (payload: unknown): AdminLi
   return {
     tenant,
     license: tenant?.currentLicense ?? fallbackLicense,
+    message: asText(record.message),
+  };
+};
+
+export const normalizeAdminTenantHistoryResponse = (payload: unknown): AdminTenantHistoryResponse => {
+  const record = asRecord(payload);
+  if (!record) {
+    return {
+      tenant: null,
+      licenses: [],
+      auditEvents: [],
+      message: 'Risposta storico tenant non valida.',
+    };
+  }
+
+  const tenant = record.tenant ? normalizeAdminTenant(record.tenant, 0) : null;
+  const licenses = Array.isArray(record.licenses)
+    ? record.licenses
+        .map((entry) => normalizeAdminLicenseHistoryEntry(entry))
+        .filter((entry): entry is AdminLicenseHistoryEntry => Boolean(entry))
+    : [];
+  const auditEvents = Array.isArray(record.auditEvents)
+    ? record.auditEvents
+        .map((entry) => normalizeAdminAuditTimelineEntry(entry))
+        .filter((entry): entry is AdminAuditTimelineEntry => Boolean(entry))
+    : [];
+
+  return {
+    tenant,
+    licenses,
+    auditEvents,
     message: asText(record.message),
   };
 };
