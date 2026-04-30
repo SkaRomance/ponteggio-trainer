@@ -15,15 +15,18 @@ import type {
   DraftSessionPayload,
   FinalizeSessionPayload,
   PersistedEventInput,
+  PersistedSessionsFilters,
   PersistedSessionSummary,
 } from '../../src/models/persistence.js';
 import type {
   AdminAuditTimelineEntry,
   AdminLicenseHistoryEntry,
   AdminLicenseUpsertPayload,
+  AdminTenantPageFilters,
   AdminTenantHistoryResponse,
   AdminTenantSummary,
 } from '../../src/models/platformOps.js';
+import type { PageInfo } from '../../src/models/pagination.js';
 
 type SqlRow = Record<string, unknown>;
 
@@ -56,6 +59,8 @@ const EVIDENCE_SECRET = process.env.MARS_EVIDENCE_SECRET?.trim() ?? process.env.
 const LOGIN_RATE_LIMIT_WINDOW_MS = Number(process.env.MARS_AUTH_RATE_LIMIT_WINDOW_MS ?? `${15 * 60 * 1000}`);
 const LOGIN_RATE_LIMIT_BLOCK_MS = Number(process.env.MARS_AUTH_RATE_LIMIT_BLOCK_MS ?? `${30 * 60 * 1000}`);
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = Number(process.env.MARS_AUTH_RATE_LIMIT_MAX_ATTEMPTS ?? '6');
+const DEFAULT_PAGE_LIMIT = 25;
+const MAX_PAGE_LIMIT = 100;
 
 const parseIsoDate = (value: unknown) => (value ? new Date(String(value)).toISOString() : null);
 
@@ -82,6 +87,157 @@ const currentLicensePrioritySql = (alias: string) => `
     ELSE 5
   END
 `;
+
+const clampPageLimit = (value: unknown, fallback = DEFAULT_PAGE_LIMIT) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(MAX_PAGE_LIMIT, Math.floor(parsed)));
+};
+
+const addQueryParam = (params: unknown[], value: unknown) => {
+  params.push(value);
+  return `$${params.length}`;
+};
+
+const base64UrlEncode = (value: string) =>
+  btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+
+const base64UrlDecode = (value: string) => {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  return atob(`${base64}${padding}`);
+};
+
+const encodePageCursor = (payload: Record<string, unknown>) =>
+  base64UrlEncode(JSON.stringify(payload));
+
+const decodePageCursor = (cursor: string | null | undefined): Record<string, unknown> | null => {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(base64UrlDecode(cursor)) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const decodeOffsetCursor = (cursor: string | null | undefined) => {
+  const decoded = decodePageCursor(cursor);
+  const offset = Number(decoded?.offset ?? 0);
+  return Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+};
+
+const createPageInfo = (
+  limit: number,
+  hasNextPage: boolean,
+  nextCursor: string | null,
+): PageInfo => ({
+  limit,
+  hasNextPage,
+  nextCursor,
+});
+
+const normalizeDateFilter = (value: string | null | undefined) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+};
+
+const normalizeSessionStatusFilter = (value: unknown): PersistedSessionsFilters['status'] => {
+  switch (String(value ?? 'all')) {
+    case 'draft':
+    case 'in_progress':
+    case 'finalized':
+    case 'aborted':
+      return String(value) as PersistedSessionsFilters['status'];
+    default:
+      return 'all';
+  }
+};
+
+const normalizeEvidenceModeFilter = (value: unknown): PersistedSessionsFilters['evidenceMode'] => {
+  switch (String(value ?? 'all')) {
+    case 'server-signed':
+    case 'local-preview':
+      return String(value) as PersistedSessionsFilters['evidenceMode'];
+    default:
+      return 'all';
+  }
+};
+
+const normalizeStartedByRoleFilter = (value: unknown): PersistedSessionsFilters['startedByRole'] => {
+  switch (String(value ?? 'all')) {
+    case 'anonymous':
+    case 'customer':
+    case 'instructor':
+    case 'admin':
+      return String(value) as PersistedSessionsFilters['startedByRole'];
+    default:
+      return 'all';
+  }
+};
+
+const normalizeAdminSessionsFilters = (
+  filters: Partial<PersistedSessionsFilters> = {},
+): PersistedSessionsFilters => ({
+  query: String(filters.query ?? '').trim(),
+  organizationId: filters.organizationId ? String(filters.organizationId).trim() : null,
+  status: normalizeSessionStatusFilter(filters.status),
+  evidenceMode: normalizeEvidenceModeFilter(filters.evidenceMode),
+  startedByRole: normalizeStartedByRoleFilter(filters.startedByRole),
+  createdFrom: normalizeDateFilter(filters.createdFrom),
+  createdTo: normalizeDateFilter(filters.createdTo),
+  limit: clampPageLimit(filters.limit),
+  cursor: filters.cursor ? String(filters.cursor) : null,
+});
+
+const normalizeTenantFilter = (value: unknown): AdminTenantPageFilters['status'] => {
+  switch (String(value ?? 'all')) {
+    case 'active':
+    case 'expiring':
+    case 'missing':
+    case 'expired':
+    case 'revoked':
+      return String(value) as AdminTenantPageFilters['status'];
+    default:
+      return 'all';
+  }
+};
+
+const normalizeTenantSort = (value: unknown): AdminTenantPageFilters['sort'] => {
+  switch (String(value ?? 'risk')) {
+    case 'name':
+    case 'sessions':
+    case 'members':
+    case 'expiry':
+      return String(value) as AdminTenantPageFilters['sort'];
+    default:
+      return 'risk';
+  }
+};
+
+const normalizeTenantDirection = (value: unknown): AdminTenantPageFilters['direction'] =>
+  String(value ?? 'asc') === 'desc' ? 'desc' : 'asc';
+
+const normalizeWarningWindowDays = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 90;
+  return Math.max(1, Math.min(365, Math.floor(parsed)));
+};
+
+const normalizeAdminTenantPageFilters = (
+  filters: Partial<AdminTenantPageFilters> = {},
+): AdminTenantPageFilters => ({
+  query: String(filters.query ?? '').trim(),
+  status: normalizeTenantFilter(filters.status),
+  sort: normalizeTenantSort(filters.sort),
+  direction: normalizeTenantDirection(filters.direction),
+  warningWindowDays: normalizeWarningWindowDays(filters.warningWindowDays),
+  limit: clampPageLimit(filters.limit),
+  cursor: filters.cursor ? String(filters.cursor) : null,
+});
 
 const inferPasswordAlgorithm = (
   passwordHash: string | null | undefined,
@@ -314,7 +470,11 @@ const createServerSignedReport = (
   };
 };
 
-const buildSessionsQuery = (whereClause: string) => `
+const buildSessionsQuery = (
+  whereClause: string,
+  orderClause = 'ORDER BY sessions.created_at DESC, sessions.id DESC',
+  limitClause = 'LIMIT 50',
+) => `
   SELECT
     sessions.id,
     sessions.client_session_id,
@@ -346,16 +506,19 @@ const buildSessionsQuery = (whereClause: string) => `
     sessions.server_hash,
     sessions.created_at,
     sessions.updated_at,
-    COALESCE(COUNT(events.id), 0) AS event_count
+    COALESCE(event_counts.event_count, 0)::int AS event_count
   FROM training.training_sessions AS sessions
   LEFT JOIN training.organizations AS organizations
     ON organizations.id = sessions.organization_id
-  LEFT JOIN training.training_session_events AS events
-    ON events.training_session_id = sessions.id
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS event_count
+    FROM training.training_session_events AS events
+    WHERE events.training_session_id = sessions.id
+  ) AS event_counts
+    ON true
   ${whereClause}
-  GROUP BY sessions.id, organizations.name
-  ORDER BY sessions.created_at DESC
-  LIMIT 50
+  ${orderClause}
+  ${limitClause}
 `;
 
 const buildAuthAccountQuery = (whereClause: string) => `
@@ -419,7 +582,12 @@ const buildAuthAccountQuery = (whereClause: string) => `
   ${whereClause}
 `;
 
-const buildTenantsQuery = (whereClause: string) => `
+const buildTenantsQuery = (
+  whereClause: string,
+  orderClause = 'ORDER BY organizations.name ASC',
+  limitClause = 'LIMIT 50',
+  offsetClause = '',
+) => `
   SELECT
     organizations.id AS organization_id,
     organizations.name AS organization_name,
@@ -480,8 +648,9 @@ const buildTenantsQuery = (whereClause: string) => `
     current_license.updates_until,
     current_license.seats,
     current_license.features
-  ORDER BY organizations.name ASC
-  LIMIT 50
+  ${orderClause}
+  ${limitClause}
+  ${offsetClause}
 `;
 
 const createServerEvidenceDigest = async (value: string) => {
@@ -508,14 +677,25 @@ const assertDatabaseConfigured = () => {
   return neon(DATABASE_URL);
 };
 
-const runSessionsQuery = async (whereClause: string, params: unknown[] = []) => {
+const runSessionsQuery = async (
+  whereClause: string,
+  params: unknown[] = [],
+  orderClause?: string,
+  limitClause?: string,
+) => {
   const sql = assertDatabaseConfigured();
-  return sql.query(buildSessionsQuery(whereClause), params);
+  return sql.query(buildSessionsQuery(whereClause, orderClause, limitClause), params);
 };
 
-const runTenantsQuery = async (whereClause: string, params: unknown[] = []) => {
+const runTenantsQuery = async (
+  whereClause: string,
+  params: unknown[] = [],
+  orderClause?: string,
+  limitClause?: string,
+  offsetClause?: string,
+) => {
   const sql = assertDatabaseConfigured();
-  return sql.query(buildTenantsQuery(whereClause), params);
+  return sql.query(buildTenantsQuery(whereClause, orderClause, limitClause, offsetClause), params);
 };
 
 const insertAuditEvent = async (event: AuditEventInput) => {
@@ -922,20 +1102,208 @@ export const recordAuditEvent = async (event: AuditEventInput) => {
   await insertAuditEvent(event);
 };
 
-export const listAdminTenants = async (query = '') => {
-  const normalizedQuery = query.trim();
-  const rows =
-    normalizedQuery.length > 0
-      ? await runTenantsQuery(
-          `
-          WHERE organizations.id ILIKE '%' || $1 || '%'
-             OR organizations.name ILIKE '%' || $1 || '%'
-        `,
-          [normalizedQuery],
-        )
-      : await runTenantsQuery('');
+export interface AdminSessionsPage {
+  sessions: PersistedSessionSummary[];
+  pageInfo: PageInfo;
+  appliedFilters: PersistedSessionsFilters;
+}
 
-  return rows.map(mapAdminTenantRow);
+export interface AdminTenantsPage {
+  tenants: AdminTenantSummary[];
+  pageInfo: PageInfo;
+  appliedFilters: AdminTenantPageFilters;
+}
+
+export const listAdminSessionsPage = async (
+  filters: Partial<PersistedSessionsFilters> = {},
+): Promise<AdminSessionsPage> => {
+  const appliedFilters = normalizeAdminSessionsFilters(filters);
+  const params: unknown[] = [];
+  const whereParts: string[] = [];
+
+  if (appliedFilters.query) {
+    const placeholder = addQueryParam(params, appliedFilters.query);
+    whereParts.push(`
+      (
+        sessions.id ILIKE '%' || ${placeholder} || '%'
+        OR sessions.client_session_id ILIKE '%' || ${placeholder} || '%'
+        OR sessions.trainee_name ILIKE '%' || ${placeholder} || '%'
+        OR sessions.instructor_name ILIKE '%' || ${placeholder} || '%'
+        OR sessions.provider_name ILIKE '%' || ${placeholder} || '%'
+        OR sessions.course_code ILIKE '%' || ${placeholder} || '%'
+        OR sessions.scenario_seed ILIKE '%' || ${placeholder} || '%'
+        OR organizations.name ILIKE '%' || ${placeholder} || '%'
+      )
+    `);
+  }
+
+  if (appliedFilters.organizationId) {
+    whereParts.push(`sessions.organization_id = ${addQueryParam(params, appliedFilters.organizationId)}`);
+  }
+
+  if (appliedFilters.status !== 'all') {
+    whereParts.push(`sessions.status = ${addQueryParam(params, appliedFilters.status)}`);
+  }
+
+  if (appliedFilters.evidenceMode !== 'all') {
+    whereParts.push(`sessions.evidence_mode = ${addQueryParam(params, appliedFilters.evidenceMode)}`);
+  }
+
+  if (appliedFilters.startedByRole !== 'all') {
+    whereParts.push(`sessions.started_by_role = ${addQueryParam(params, appliedFilters.startedByRole)}`);
+  }
+
+  if (appliedFilters.createdFrom) {
+    whereParts.push(`sessions.created_at >= ${addQueryParam(params, appliedFilters.createdFrom)}::timestamptz`);
+  }
+
+  if (appliedFilters.createdTo) {
+    whereParts.push(`sessions.created_at <= ${addQueryParam(params, appliedFilters.createdTo)}::timestamptz`);
+  }
+
+  const cursor = decodePageCursor(appliedFilters.cursor);
+  const cursorCreatedAt = typeof cursor?.createdAt === 'string' ? cursor.createdAt : null;
+  const cursorId = typeof cursor?.id === 'string' ? cursor.id : null;
+  if (cursorCreatedAt && cursorId) {
+    const createdAtPlaceholder = addQueryParam(params, cursorCreatedAt);
+    const idPlaceholder = addQueryParam(params, cursorId);
+    whereParts.push(`
+      (
+        sessions.created_at < ${createdAtPlaceholder}::timestamptz
+        OR (
+          sessions.created_at = ${createdAtPlaceholder}::timestamptz
+          AND sessions.id < ${idPlaceholder}
+        )
+      )
+    `);
+  }
+
+  const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+  const rows = await runSessionsQuery(
+    whereClause,
+    params,
+    'ORDER BY sessions.created_at DESC, sessions.id DESC',
+    `LIMIT ${appliedFilters.limit + 1}`,
+  );
+  const sessions = rows.map(mapSessionRow);
+  const visibleSessions = sessions.slice(0, appliedFilters.limit);
+  const hasNextPage = sessions.length > appliedFilters.limit;
+  const lastVisibleSession = visibleSessions[visibleSessions.length - 1] ?? null;
+
+  return {
+    sessions: visibleSessions,
+    pageInfo: createPageInfo(
+      appliedFilters.limit,
+      hasNextPage,
+      hasNextPage && lastVisibleSession
+        ? encodePageCursor({ createdAt: lastVisibleSession.createdAt, id: lastVisibleSession.id })
+        : null,
+    ),
+    appliedFilters,
+  };
+};
+
+const buildTenantOrderClause = (filters: AdminTenantPageFilters) => {
+  const direction = filters.direction === 'desc' ? 'DESC' : 'ASC';
+  const riskRank = `
+    CASE
+      WHEN current_license.id IS NULL THEN 5
+      WHEN current_license.status IN ('expired', 'revoked') THEN 4
+      WHEN current_license.status = 'active'
+        AND current_license.expires_at IS NOT NULL
+        AND current_license.expires_at <= now() + ${filters.warningWindowDays} * interval '1 day'
+        THEN 3
+      WHEN COUNT(DISTINCT sessions.id) = 0 THEN 2
+      WHEN current_license.status = 'pending' THEN 1
+      ELSE 0
+    END
+  `;
+
+  switch (filters.sort) {
+    case 'name':
+      return `ORDER BY organizations.name ${direction}, organizations.id ASC`;
+    case 'sessions':
+      return `ORDER BY COUNT(DISTINCT sessions.id) ${direction}, organizations.name ASC, organizations.id ASC`;
+    case 'members':
+      return `ORDER BY COUNT(DISTINCT memberships.user_id) FILTER (WHERE memberships.active = true) ${direction}, organizations.name ASC, organizations.id ASC`;
+    case 'expiry':
+      return `ORDER BY current_license.expires_at ${direction} NULLS LAST, organizations.name ASC, organizations.id ASC`;
+    case 'risk':
+    default:
+      return `ORDER BY ${riskRank} DESC, organizations.name ASC, organizations.id ASC`;
+  }
+};
+
+export const listAdminTenantsPage = async (
+  filters: Partial<AdminTenantPageFilters> = {},
+): Promise<AdminTenantsPage> => {
+  const appliedFilters = normalizeAdminTenantPageFilters(filters);
+  const params: unknown[] = [];
+  const whereParts: string[] = [];
+
+  if (appliedFilters.query) {
+    const placeholder = addQueryParam(params, appliedFilters.query);
+    whereParts.push(`
+      (
+        organizations.id ILIKE '%' || ${placeholder} || '%'
+        OR organizations.name ILIKE '%' || ${placeholder} || '%'
+      )
+    `);
+  }
+
+  switch (appliedFilters.status) {
+    case 'active':
+      whereParts.push(`current_license.status = 'active'`);
+      break;
+    case 'expiring':
+      whereParts.push(`
+        current_license.status = 'active'
+        AND current_license.expires_at IS NOT NULL
+        AND current_license.expires_at >= now()
+        AND current_license.expires_at <= now() + ${appliedFilters.warningWindowDays} * interval '1 day'
+      `);
+      break;
+    case 'missing':
+      whereParts.push(`current_license.id IS NULL`);
+      break;
+    case 'expired':
+      whereParts.push(`current_license.status = 'expired'`);
+      break;
+    case 'revoked':
+      whereParts.push(`current_license.status = 'revoked'`);
+      break;
+    case 'all':
+    default:
+      break;
+  }
+
+  const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+  const offset = decodeOffsetCursor(appliedFilters.cursor);
+  const rows = await runTenantsQuery(
+    whereClause,
+    params,
+    buildTenantOrderClause(appliedFilters),
+    `LIMIT ${appliedFilters.limit + 1}`,
+    offset > 0 ? `OFFSET ${offset}` : '',
+  );
+  const tenants = rows.map(mapAdminTenantRow);
+  const visibleTenants = tenants.slice(0, appliedFilters.limit);
+  const hasNextPage = tenants.length > appliedFilters.limit;
+
+  return {
+    tenants: visibleTenants,
+    pageInfo: createPageInfo(
+      appliedFilters.limit,
+      hasNextPage,
+      hasNextPage ? encodePageCursor({ offset: offset + appliedFilters.limit }) : null,
+    ),
+    appliedFilters,
+  };
+};
+
+export const listAdminTenants = async (query = '') => {
+  const result = await listAdminTenantsPage({ query, limit: 50 });
+  return result.tenants;
 };
 
 export const getAdminTenantById = async (organizationId: string) => {
@@ -1477,6 +1845,6 @@ export const listUserSessions = async (organizationId: string, userId: string) =
 };
 
 export const listAdminSessions = async () => {
-  const rows = await runSessionsQuery('');
-  return rows.map(mapSessionRow);
+  const result = await listAdminSessionsPage({ limit: 50 });
+  return result.sessions;
 };

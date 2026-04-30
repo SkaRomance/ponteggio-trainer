@@ -1091,6 +1091,20 @@ body {
   margin-top: 1rem;
 }
 
+.platform-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(26, 71, 42, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--mars-text-secondary);
+  font-size: 0.78rem;
+}
+
 .platform-tenant-card {
   border: 1px solid rgba(26, 71, 42, 0.14);
   border-radius: 20px;
@@ -1512,6 +1526,11 @@ body {
   align-items: start;
 }
 
+.archive-list-column {
+  display: grid;
+  gap: 0.85rem;
+}
+
 .archive-session-list {
   display: grid;
   gap: 0.9rem;
@@ -1524,6 +1543,19 @@ body {
 .archive-session-list.workspace {
   margin-top: 0;
   max-height: 34rem;
+}
+
+.archive-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(26, 71, 42, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--mars-text-secondary);
+  font-size: 0.78rem;
 }
 
 .archive-empty-state {

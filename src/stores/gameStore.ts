@@ -19,12 +19,15 @@ import {
 import type {
   DraftSessionPayload,
   FinalizeSessionPayload,
+  PersistedSessionsFilters,
   PersistedSessionSummary,
   PersistedSessionsResponse,
   PersistenceSyncStatus,
 } from '../models/persistence';
+import { normalizePageInfo, type PageInfo } from '../models/pagination';
 import type {
   AdminLicenseUpsertPayload,
+  AdminTenantPageFilters,
   AdminTenantSummary,
 } from '../models/platformOps';
 import {
@@ -140,14 +143,16 @@ export interface GameState {
   sessionPersistenceStatus: PersistenceSyncStatus;
   sessionPersistenceMessage: string | null;
   persistedSessions: PersistedSessionSummary[];
+  persistedSessionsPageInfo: PageInfo | null;
   persistedSessionsStatus: PersistenceSyncStatus;
   persistedSessionsMessage: string | null;
-  loadPersistedSessions: () => Promise<void>;
+  loadPersistedSessions: (options?: PersistedSessionsLoadOptions) => Promise<void>;
   adminTenantQuery: string;
   adminTenants: AdminTenantSummary[];
+  adminTenantsPageInfo: PageInfo | null;
   adminTenantsStatus: PersistenceSyncStatus;
   adminTenantsMessage: string | null;
-  loadAdminTenants: (query?: string) => Promise<void>;
+  loadAdminTenants: (query?: string, options?: AdminTenantsLoadOptions) => Promise<void>;
   issueAdminLicense: (payload: AdminLicenseUpsertPayload) => Promise<boolean>;
   revokeAdminLicense: (licenseId: string) => Promise<boolean>;
   createPersistedSessionDraft: () => Promise<void>;
@@ -350,6 +355,18 @@ interface SessionPersistenceContext {
   sessionRunId: number;
 }
 
+interface PersistedSessionsLoadOptions {
+  append?: boolean;
+  cursor?: string | null;
+  filters?: Partial<PersistedSessionsFilters>;
+}
+
+interface AdminTenantsLoadOptions {
+  append?: boolean;
+  cursor?: string | null;
+  filters?: Partial<AdminTenantPageFilters>;
+}
+
 const captureArchiveLoadContext = (
   state: Pick<GameState, 'authIdentity' | 'sessionsArchiveStatus' | 'canViewGlobalSessions'>,
 ): ArchiveLoadContext | null =>
@@ -414,6 +431,7 @@ const normalizePersistedSessionsResponse = (payload: unknown): PersistedSessions
       sessions: payload as PersistedSessionSummary[],
       status: 'ready',
       message: null,
+      pageInfo: null,
     };
   }
 
@@ -426,6 +444,8 @@ const normalizePersistedSessionsResponse = (payload: unknown): PersistedSessions
       sessions: Array.isArray(candidate) ? (candidate as PersistedSessionSummary[]) : [],
       status: (record.status as PersistedSessionsResponse['status']) ?? 'ready',
       message: typeof record.message === 'string' ? record.message : null,
+      pageInfo: normalizePageInfo(record.pageInfo),
+      appliedFilters: record.appliedFilters as PersistedSessionsFilters | undefined,
     };
   }
 
@@ -433,8 +453,36 @@ const normalizePersistedSessionsResponse = (payload: unknown): PersistedSessions
     sessions: [],
     status: 'unavailable',
     message: 'Risposta archivio sessioni non valida.',
+    pageInfo: null,
   };
 };
+
+const appendQueryParam = (params: URLSearchParams, key: string, value: unknown) => {
+  if (value === undefined || value === null || value === '' || value === 'all') return;
+  params.set(key, String(value));
+};
+
+const mergeSessionsById = (
+  current: PersistedSessionSummary[],
+  incoming: PersistedSessionSummary[],
+) => {
+  const byId = new Map(current.map((session) => [session.id, session]));
+  incoming.forEach((session) => {
+    byId.set(session.id, session);
+  });
+  return Array.from(byId.values());
+};
+
+const mergeTenantsById = (current: AdminTenantSummary[], incoming: AdminTenantSummary[]) => {
+  const byId = new Map(current.map((tenant) => [tenant.id, tenant]));
+  incoming.forEach((tenant) => {
+    byId.set(tenant.id, tenant);
+  });
+  return Array.from(byId.values());
+};
+
+let persistedSessionsLoadSequence = 0;
+let adminTenantsLoadSequence = 0;
 
 export const useGameStore = create<GameState>((set, get) => {
   const isDemoMode = import.meta.env.VITE_APP_MODE === 'demo';
@@ -486,10 +534,12 @@ export const useGameStore = create<GameState>((set, get) => {
           accessSyncStatus: 'ready',
           accessSyncMessage: payload.message,
           persistedSessions: [],
+          persistedSessionsPageInfo: null,
           persistedSessionsStatus: 'idle',
           persistedSessionsMessage: null,
           adminTenantQuery: '',
           adminTenants: [],
+          adminTenantsPageInfo: null,
           adminTenantsStatus: 'idle',
           adminTenantsMessage: null,
           courseSession: withAccessContext(
@@ -508,10 +558,12 @@ export const useGameStore = create<GameState>((set, get) => {
         } else {
           set({
             persistedSessions: [],
+            persistedSessionsPageInfo: null,
             persistedSessionsStatus: 'idle',
             persistedSessionsMessage: null,
             adminTenantQuery: '',
             adminTenants: [],
+            adminTenantsPageInfo: null,
             adminTenantsStatus: 'idle',
             adminTenantsMessage: null,
           });
@@ -527,10 +579,12 @@ export const useGameStore = create<GameState>((set, get) => {
           accessSyncStatus: 'error',
           accessSyncMessage: error instanceof Error ? error.message : 'Errore di sincronizzazione accessi.',
           persistedSessions: [],
+          persistedSessionsPageInfo: null,
           persistedSessionsStatus: 'error',
           persistedSessionsMessage: 'Archivio sessioni non disponibile.',
           adminTenantQuery: '',
           adminTenants: [],
+          adminTenantsPageInfo: null,
           adminTenantsStatus: 'error',
           adminTenantsMessage: 'Control plane admin non disponibile.',
         });
@@ -593,10 +647,12 @@ export const useGameStore = create<GameState>((set, get) => {
         sessionPersistenceStatus: 'idle',
         sessionPersistenceMessage: null,
         persistedSessions: [],
+        persistedSessionsPageInfo: null,
         persistedSessionsStatus: 'idle',
         persistedSessionsMessage: null,
         adminTenantQuery: '',
         adminTenants: [],
+        adminTenantsPageInfo: null,
         adminTenantsStatus: 'idle',
         adminTenantsMessage: null,
         courseSession: withAccessContext(
@@ -617,28 +673,50 @@ export const useGameStore = create<GameState>((set, get) => {
     sessionPersistenceStatus: 'idle',
     sessionPersistenceMessage: null,
     persistedSessions: [],
+    persistedSessionsPageInfo: null,
     persistedSessionsStatus: 'idle',
     persistedSessionsMessage: null,
     adminTenantQuery: '',
     adminTenants: [],
+    adminTenantsPageInfo: null,
     adminTenantsStatus: 'idle',
     adminTenantsMessage: null,
-    loadPersistedSessions: async () => {
+    loadPersistedSessions: async (options = {}) => {
       const state = get();
       if (state.authIdentity.status !== 'authenticated' || state.sessionsArchiveStatus !== 'ready') {
         set({
           persistedSessions: [],
+          persistedSessionsPageInfo: null,
           persistedSessionsStatus: 'idle',
           persistedSessionsMessage: null,
         });
         return;
       }
 
+      const filters = options.filters ?? {};
+      const cursor = options.cursor ?? filters.cursor;
+      const isAppend = Boolean(options.append && cursor);
+      const loadSequence = ++persistedSessionsLoadSequence;
       const requestContext = captureArchiveLoadContext(state);
-      set({ persistedSessionsStatus: 'loading', persistedSessionsMessage: null });
+      set({
+        persistedSessionsStatus: isAppend ? 'syncing' : 'loading',
+        persistedSessionsMessage: null,
+      });
 
       try {
-        const endpoint = state.canViewGlobalSessions() ? '/api/admin/sessions' : '/api/evidence/sessions';
+        const params = new URLSearchParams();
+        params.set('limit', String(filters.limit ?? 25));
+        appendQueryParam(params, 'cursor', cursor);
+        appendQueryParam(params, 'query', filters.query);
+        appendQueryParam(params, 'organizationId', filters.organizationId);
+        appendQueryParam(params, 'status', filters.status);
+        appendQueryParam(params, 'evidenceMode', filters.evidenceMode);
+        appendQueryParam(params, 'startedByRole', filters.startedByRole);
+        appendQueryParam(params, 'createdFrom', filters.createdFrom);
+        appendQueryParam(params, 'createdTo', filters.createdTo);
+
+        const baseEndpoint = state.canViewGlobalSessions() ? '/api/admin/sessions' : '/api/evidence/sessions';
+        const endpoint = `${baseEndpoint}?${params.toString()}`;
         const response = await fetch(endpoint, {
           credentials: 'same-origin',
         });
@@ -648,17 +726,20 @@ export const useGameStore = create<GameState>((set, get) => {
           throw new Error(payload.message ?? 'Impossibile caricare l archivio sessioni.');
         }
 
-        if (!isSameArchiveLoadContext(get(), requestContext)) {
+        if (loadSequence !== persistedSessionsLoadSequence || !isSameArchiveLoadContext(get(), requestContext)) {
           return;
         }
 
-        set({
-          persistedSessions: payload.sessions,
+        set((currentState) => ({
+          persistedSessions: isAppend
+            ? mergeSessionsById(currentState.persistedSessions, payload.sessions)
+            : payload.sessions,
+          persistedSessionsPageInfo: payload.pageInfo ?? null,
           persistedSessionsStatus: payload.status === 'ready' ? 'ready' : 'error',
           persistedSessionsMessage: payload.message,
-        });
+        }));
       } catch (error) {
-        if (!isSameArchiveLoadContext(get(), requestContext)) {
+        if (loadSequence !== persistedSessionsLoadSequence || !isSameArchiveLoadContext(get(), requestContext)) {
           return;
         }
 
@@ -669,28 +750,43 @@ export const useGameStore = create<GameState>((set, get) => {
         });
       }
     },
-    loadAdminTenants: async (query) => {
+    loadAdminTenants: async (query, options = {}) => {
       const state = get();
       const nextQuery = query ?? state.adminTenantQuery;
       if (state.authIdentity.status !== 'authenticated' || state.authIdentity.role !== 'admin') {
         set({
           adminTenantQuery: nextQuery,
           adminTenants: [],
+          adminTenantsPageInfo: null,
           adminTenantsStatus: 'idle',
           adminTenantsMessage: null,
         });
         return;
       }
 
+      const filters = options.filters ?? {};
+      const cursor = options.cursor ?? filters.cursor;
+      const isAppend = Boolean(options.append && cursor);
+      const requestUserId = state.authIdentity.userId;
+      const loadSequence = ++adminTenantsLoadSequence;
+
       set({
         adminTenantQuery: nextQuery,
-        adminTenantsStatus: 'loading',
+        adminTenantsStatus: isAppend ? 'syncing' : 'loading',
         adminTenantsMessage: null,
       });
 
       try {
         const search = nextQuery.trim();
-        const endpoint = search ? `/api/admin/tenants?query=${encodeURIComponent(search)}` : '/api/admin/tenants';
+        const params = new URLSearchParams();
+        appendQueryParam(params, 'query', search);
+        appendQueryParam(params, 'cursor', cursor);
+        appendQueryParam(params, 'status', filters.status);
+        appendQueryParam(params, 'sort', filters.sort ?? 'risk');
+        appendQueryParam(params, 'direction', filters.direction ?? 'asc');
+        appendQueryParam(params, 'warningWindowDays', filters.warningWindowDays ?? 90);
+        params.set('limit', String(filters.limit ?? 25));
+        const endpoint = `/api/admin/tenants?${params.toString()}`;
         const response = await fetch(endpoint, {
           credentials: 'same-origin',
         });
@@ -700,13 +796,36 @@ export const useGameStore = create<GameState>((set, get) => {
           throw new Error(payload.message ?? 'Impossibile caricare il catalogo tenant.');
         }
 
-        set({
+        const currentState = get();
+        if (
+          loadSequence !== adminTenantsLoadSequence ||
+          currentState.authIdentity.status !== 'authenticated' ||
+          currentState.authIdentity.role !== 'admin' ||
+          currentState.authIdentity.userId !== requestUserId
+        ) {
+          return;
+        }
+
+        set((latestState) => ({
           adminTenantQuery: payload.query,
-          adminTenants: payload.tenants,
+          adminTenants: isAppend
+            ? mergeTenantsById(latestState.adminTenants, payload.tenants)
+            : payload.tenants,
+          adminTenantsPageInfo: payload.pageInfo ?? null,
           adminTenantsStatus: payload.status === 'ready' ? 'ready' : 'error',
           adminTenantsMessage: payload.message,
-        });
+        }));
       } catch (error) {
+        const currentState = get();
+        if (
+          loadSequence !== adminTenantsLoadSequence ||
+          currentState.authIdentity.status !== 'authenticated' ||
+          currentState.authIdentity.role !== 'admin' ||
+          currentState.authIdentity.userId !== requestUserId
+        ) {
+          return;
+        }
+
         set({
           adminTenantsStatus: 'error',
           adminTenantsMessage: error instanceof Error ? error.message : 'Errore durante il caricamento tenant.',

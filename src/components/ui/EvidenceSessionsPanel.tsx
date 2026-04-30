@@ -198,6 +198,7 @@ export default function EvidenceSessionsPanel() {
     sessionsArchiveStatus,
     canViewGlobalSessions,
     persistedSessions,
+    persistedSessionsPageInfo,
     persistedSessionsStatus,
     persistedSessionsMessage,
     loadPersistedSessions,
@@ -226,7 +227,10 @@ export default function EvidenceSessionsPanel() {
       : sessionsArchiveStatus === 'database-required'
         ? 'Database richiesto'
         : 'Archivio non collegato';
-  const isBusy = accessSyncStatus === 'loading' || persistedSessionsStatus === 'loading';
+  const isBusy =
+    accessSyncStatus === 'loading' ||
+    persistedSessionsStatus === 'loading' ||
+    persistedSessionsStatus === 'syncing';
 
   const sessions = useMemo(
     () =>
@@ -289,6 +293,17 @@ export default function EvidenceSessionsPanel() {
       return haystack.includes(query);
     });
   }, [deferredSearchInput, evidenceFilter, outcomeFilter, sessions, statusFilter]);
+
+  const buildSessionLoadFilters = () => ({
+    query: searchInput,
+    status: statusFilter,
+    evidenceMode: evidenceFilter,
+    limit: 25,
+  });
+
+  const canLoadMoreSessions = Boolean(
+    persistedSessionsPageInfo?.hasNextPage && persistedSessionsPageInfo.nextCursor,
+  );
 
   const effectiveSelectedSessionId =
     selectedSessionId && filteredSessions.some((session) => session.id === selectedSessionId)
@@ -408,7 +423,7 @@ export default function EvidenceSessionsPanel() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => void loadPersistedSessions()}
+            onClick={() => void loadPersistedSessions({ filters: buildSessionLoadFilters() })}
             disabled={!endpoint || isBusy}
           >
             <RefreshCw size={18} aria-hidden="true" />
@@ -541,91 +556,114 @@ export default function EvidenceSessionsPanel() {
       </div>
 
       <div className="archive-workspace">
-        <div className="archive-session-list workspace" aria-live="polite">
-          {authIdentity.status !== 'authenticated' ? (
-            <div className="archive-empty-state">
-              <Database size={20} aria-hidden="true" />
-              <strong>Accesso richiesto</strong>
-              <p>Autentica un tenant o un amministratore per leggere le sessioni persistite.</p>
-            </div>
-          ) : persistedSessionsStatus === 'loading' && sessions.length === 0 ? (
-            <div className="archive-empty-state">
-              <RefreshCw size={20} aria-hidden="true" />
-              <strong>Caricamento archivio</strong>
-              <p>Recupero delle sessioni tracciate dal backend in corso.</p>
-            </div>
-          ) : filteredSessions.length === 0 ? (
-            <div className="archive-empty-state">
-              <FileSearch size={20} aria-hidden="true" />
-              <strong>Nessuna sessione in vista</strong>
-              <p>Rivedi query e filtri oppure aggiorna l archivio per recuperare nuovi record.</p>
-            </div>
-          ) : (
-            filteredSessions.map((session) => (
+        <div className="archive-list-column">
+          <div className="archive-session-list workspace" aria-live="polite">
+            {authIdentity.status !== 'authenticated' ? (
+              <div className="archive-empty-state">
+                <Database size={20} aria-hidden="true" />
+                <strong>Accesso richiesto</strong>
+                <p>Autentica un tenant o un amministratore per leggere le sessioni persistite.</p>
+              </div>
+            ) : persistedSessionsStatus === 'loading' && sessions.length === 0 ? (
+              <div className="archive-empty-state">
+                <RefreshCw size={20} aria-hidden="true" />
+                <strong>Caricamento archivio</strong>
+                <p>Recupero delle sessioni tracciate dal backend in corso.</p>
+              </div>
+            ) : filteredSessions.length === 0 ? (
+              <div className="archive-empty-state">
+                <FileSearch size={20} aria-hidden="true" />
+                <strong>Nessuna sessione in vista</strong>
+                <p>Rivedi query e filtri oppure aggiorna l archivio per recuperare nuovi record.</p>
+              </div>
+            ) : (
+              filteredSessions.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  className={`archive-session-card-button${selectedSession?.id === session.id ? ' selected' : ''}`}
+                  onClick={() => setSelectedSessionId(session.id)}
+                >
+                  <div className="archive-session-top">
+                    <div className="archive-session-heading">
+                      <span className="archive-session-id">{session.id}</span>
+                      <p className="archive-session-meta">
+                        {session.organizationName || 'Organizzazione n/d'}
+                        {' · '}
+                        {session.traineeName || 'Allievo n/d'}
+                        {' · '}
+                        {session.courseCode || 'Corso n/d'}
+                      </p>
+                    </div>
+
+                    <span className="archive-session-outcome" data-tone={getOutcomeTone(session.outcomeLabel)}>
+                      {session.outcomeLabel || 'Sessione persistita'}
+                    </span>
+                  </div>
+
+                  <div className="archive-session-grid">
+                    <div className="archive-session-detail">
+                      <span className="detail-label">Docente</span>
+                      <strong className="detail-value">{session.instructorName || 'n/d'}</strong>
+                    </div>
+
+                    <div className="archive-session-detail">
+                      <span className="detail-label">Inizio</span>
+                      <strong className="detail-value">{formatDateTime(session.startedAt)}</strong>
+                    </div>
+
+                    <div className="archive-session-detail">
+                      <span className="detail-label">Fine</span>
+                      <strong className="detail-value">{formatDateTime(session.endedAt)}</strong>
+                    </div>
+
+                    <div className="archive-session-detail">
+                      <span className="detail-label">Punteggio</span>
+                      <strong className="detail-value">
+                        {session.totalScore === null ? 'n/d' : `${session.totalScore} pt`}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="archive-session-status-row">
+                    <span className={`archive-session-pill ${session.evidenceMode === 'server-signed' ? 'success' : 'warning'}`}>
+                      {formatEvidenceMode(session.evidenceMode)}
+                    </span>
+                    <span className={`archive-session-pill ${getPersistedStatusTone(session.status)}`}>
+                      {formatPersistedStatus(session.status)}
+                    </span>
+                    <span className="archive-session-pill neutral">{session.eventCount} eventi</span>
+                  </div>
+
+                  <p className="archive-session-note">
+                    Modalita {formatMode(session.mode)} · infrazioni {session.infractions ?? 0}
+                    {session.criticalInfractions ? ` · critiche ${session.criticalInfractions}` : ''}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+
+          {canLoadMoreSessions ? (
+            <div className="archive-load-more">
               <button
-                key={session.id}
                 type="button"
-                className={`archive-session-card-button${selectedSession?.id === session.id ? ' selected' : ''}`}
-                onClick={() => setSelectedSessionId(session.id)}
+                className="btn-secondary"
+                onClick={() =>
+                  void loadPersistedSessions({
+                    append: true,
+                    cursor: persistedSessionsPageInfo?.nextCursor,
+                    filters: buildSessionLoadFilters(),
+                  })
+                }
+                disabled={isBusy}
               >
-                <div className="archive-session-top">
-                  <div className="archive-session-heading">
-                    <span className="archive-session-id">{session.id}</span>
-                    <p className="archive-session-meta">
-                      {session.organizationName || 'Organizzazione n/d'}
-                      {' · '}
-                      {session.traineeName || 'Allievo n/d'}
-                      {' · '}
-                      {session.courseCode || 'Corso n/d'}
-                    </p>
-                  </div>
-
-                  <span className="archive-session-outcome" data-tone={getOutcomeTone(session.outcomeLabel)}>
-                    {session.outcomeLabel || 'Sessione persistita'}
-                  </span>
-                </div>
-
-                <div className="archive-session-grid">
-                  <div className="archive-session-detail">
-                    <span className="detail-label">Docente</span>
-                    <strong className="detail-value">{session.instructorName || 'n/d'}</strong>
-                  </div>
-
-                  <div className="archive-session-detail">
-                    <span className="detail-label">Inizio</span>
-                    <strong className="detail-value">{formatDateTime(session.startedAt)}</strong>
-                  </div>
-
-                  <div className="archive-session-detail">
-                    <span className="detail-label">Fine</span>
-                    <strong className="detail-value">{formatDateTime(session.endedAt)}</strong>
-                  </div>
-
-                  <div className="archive-session-detail">
-                    <span className="detail-label">Punteggio</span>
-                    <strong className="detail-value">
-                      {session.totalScore === null ? 'n/d' : `${session.totalScore} pt`}
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="archive-session-status-row">
-                  <span className={`archive-session-pill ${session.evidenceMode === 'server-signed' ? 'success' : 'warning'}`}>
-                    {formatEvidenceMode(session.evidenceMode)}
-                  </span>
-                  <span className={`archive-session-pill ${getPersistedStatusTone(session.status)}`}>
-                    {formatPersistedStatus(session.status)}
-                  </span>
-                  <span className="archive-session-pill neutral">{session.eventCount} eventi</span>
-                </div>
-
-                <p className="archive-session-note">
-                  Modalita {formatMode(session.mode)} · infrazioni {session.infractions ?? 0}
-                  {session.criticalInfractions ? ` · critiche ${session.criticalInfractions}` : ''}
-                </p>
+                <RefreshCw size={18} aria-hidden="true" />
+                Carica altri record
               </button>
-            ))
-          )}
+              <span>Pagina da {persistedSessionsPageInfo?.limit ?? 25} sessioni.</span>
+            </div>
+          ) : null}
         </div>
 
         <aside className="archive-detail-panel" aria-live="polite">

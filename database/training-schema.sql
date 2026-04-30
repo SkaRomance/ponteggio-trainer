@@ -1,5 +1,7 @@
 CREATE SCHEMA IF NOT EXISTS training;
 
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS training.organizations (
   id text PRIMARY KEY,
   name text NOT NULL,
@@ -9,6 +11,9 @@ CREATE TABLE IF NOT EXISTS training.organizations (
 
 CREATE INDEX IF NOT EXISTS organizations_name_idx
   ON training.organizations (name);
+
+CREATE INDEX IF NOT EXISTS organizations_name_trgm_idx
+  ON training.organizations USING gin (name gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS training.users (
   id text PRIMARY KEY,
@@ -98,6 +103,9 @@ CREATE INDEX IF NOT EXISTS licenses_org_idx
 CREATE INDEX IF NOT EXISTS licenses_status_idx
   ON training.licenses (status);
 
+CREATE INDEX IF NOT EXISTS licenses_org_status_expiry_idx
+  ON training.licenses (organization_id, status, expires_at DESC, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS training.training_sessions (
   id text PRIMARY KEY,
   client_session_id text NOT NULL,
@@ -137,11 +145,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS training_sessions_org_client_session_uidx
 CREATE INDEX IF NOT EXISTS sessions_org_created_idx
   ON training.training_sessions (organization_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS sessions_created_idx
+  ON training.training_sessions (created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS sessions_user_created_idx
   ON training.training_sessions (user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS sessions_status_idx
   ON training.training_sessions (status);
+
+CREATE INDEX IF NOT EXISTS sessions_status_created_idx
+  ON training.training_sessions (status, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS sessions_evidence_created_idx
+  ON training.training_sessions (evidence_mode, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS sessions_role_created_idx
+  ON training.training_sessions (started_by_role, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS sessions_client_id_trgm_idx
+  ON training.training_sessions USING gin (client_session_id gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS sessions_trainee_trgm_idx
+  ON training.training_sessions USING gin (trainee_name gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS sessions_instructor_trgm_idx
+  ON training.training_sessions USING gin (instructor_name gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS sessions_provider_trgm_idx
+  ON training.training_sessions USING gin (provider_name gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS sessions_course_code_trgm_idx
+  ON training.training_sessions USING gin (course_code gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS sessions_scenario_seed_trgm_idx
+  ON training.training_sessions USING gin (scenario_seed gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS training.training_session_events (
   id text PRIMARY KEY,

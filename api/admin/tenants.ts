@@ -1,5 +1,5 @@
 import { getAccessResponseForRequest, json } from '../_lib/auth.js';
-import { isDatabaseConfigured, listAdminTenants, recordAuditEvent } from '../_lib/db.js';
+import { isDatabaseConfigured, listAdminTenantsPage, recordAuditEvent } from '../_lib/db.js';
 
 export const config = {
   runtime: 'edge',
@@ -29,7 +29,15 @@ export default async function handler(request: Request) {
 
   const requestUrl = new URL(request.url);
   const query = requestUrl.searchParams.get('query')?.trim() ?? '';
-  const tenants = await listAdminTenants(query);
+  const page = await listAdminTenantsPage({
+    query,
+    status: requestUrl.searchParams.get('status') ?? 'all',
+    sort: requestUrl.searchParams.get('sort') ?? 'risk',
+    direction: requestUrl.searchParams.get('direction') ?? 'asc',
+    warningWindowDays: Number(requestUrl.searchParams.get('warningWindowDays') ?? ''),
+    limit: Number(requestUrl.searchParams.get('limit') ?? ''),
+    cursor: requestUrl.searchParams.get('cursor'),
+  });
   await recordAuditEvent({
     actorUserId: accessResponse.identity.userId,
     organizationId: null,
@@ -37,17 +45,19 @@ export default async function handler(request: Request) {
     objectType: 'organization',
     objectId: null,
     details: {
-      query,
-      resultCount: tenants.length,
+      filters: page.appliedFilters,
+      resultCount: page.tenants.length,
     },
   }).catch(() => {});
 
   return json(
     {
-      tenants,
-      query,
+      tenants: page.tenants,
+      query: page.appliedFilters.query,
+      pageInfo: page.pageInfo,
+      appliedFilters: page.appliedFilters,
       status: 'ready',
-      message: tenants.length ? null : query ? 'Nessun tenant trovato per la ricerca corrente.' : 'Nessun tenant registrato.',
+      message: page.tenants.length ? null : query ? 'Nessun tenant trovato per la ricerca corrente.' : 'Nessun tenant registrato.',
     },
     { status: 200 },
   );

@@ -1,7 +1,20 @@
 import type { EvidenceMode, SessionsArchiveStatus } from './accessControl';
+import type { PageInfo } from './pagination';
 
 export type PersistenceSyncStatus = 'idle' | 'loading' | 'syncing' | 'ready' | 'error';
 export type PersistedSessionStatus = 'draft' | 'in_progress' | 'finalized' | 'aborted';
+
+export interface PersistedSessionsFilters {
+  query: string;
+  organizationId: string | null;
+  status: 'all' | PersistedSessionStatus;
+  evidenceMode: 'all' | EvidenceMode;
+  startedByRole: 'all' | 'anonymous' | 'customer' | 'instructor' | 'admin';
+  createdFrom: string | null;
+  createdTo: string | null;
+  limit: number;
+  cursor: string | null;
+}
 
 export interface PersistedSessionSummary {
   id: string;
@@ -41,6 +54,8 @@ export interface PersistedSessionsResponse {
   sessions: PersistedSessionSummary[];
   status: SessionsArchiveStatus;
   message: string | null;
+  pageInfo?: PageInfo | null;
+  appliedFilters?: PersistedSessionsFilters;
 }
 
 export interface PersistedSessionDetailResponse {

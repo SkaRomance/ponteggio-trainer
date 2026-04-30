@@ -137,6 +137,7 @@ export default function PlatformOpsPanel() {
     persistedSessionsStatus,
     adminTenantQuery,
     adminTenants,
+    adminTenantsPageInfo,
     adminTenantsStatus,
     adminTenantsMessage,
     loadAdminTenants,
@@ -168,15 +169,33 @@ export default function PlatformOpsPanel() {
   const isBusy = adminTenantsStatus === 'loading' || adminTenantsStatus === 'syncing';
   const deferredAdminTenants = useDeferredValue(adminTenants);
 
+  const buildTenantLoadFilters = () => ({
+    status: statusFilter,
+    sort: sortMode,
+    direction: 'asc' as const,
+    warningWindowDays,
+    limit: 25,
+  });
+
+  const canLoadMoreTenants = Boolean(adminTenantsPageInfo?.hasNextPage && adminTenantsPageInfo.nextCursor);
+
   useEffect(() => {
     setSearchInput(adminTenantQuery);
   }, [adminTenantQuery]);
 
   useEffect(() => {
     if (isAdmin && adminTenantsStatus === 'idle') {
-      void loadAdminTenants('');
+      void loadAdminTenants('', {
+        filters: {
+          status: statusFilter,
+          sort: sortMode,
+          direction: 'asc',
+          warningWindowDays,
+          limit: 25,
+        },
+      });
     }
-  }, [adminTenantsStatus, isAdmin, loadAdminTenants]);
+  }, [adminTenantsStatus, isAdmin, loadAdminTenants, sortMode, statusFilter]);
 
   const tenantStats = useMemo(
     () => ({
@@ -313,7 +332,7 @@ export default function PlatformOpsPanel() {
   const handleSearch = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     setLocalMessage(null);
-    await loadAdminTenants(searchInput);
+    await loadAdminTenants(searchInput, { filters: buildTenantLoadFilters() });
   };
 
   const handleIssueLicense = async (event: FormEvent<HTMLFormElement>) => {
@@ -348,7 +367,7 @@ export default function PlatformOpsPanel() {
     });
     if (ok) {
       resetLicenseForm();
-      await loadAdminTenants(searchInput);
+      await loadAdminTenants(searchInput, { filters: buildTenantLoadFilters() });
     }
   };
 
@@ -368,7 +387,7 @@ export default function PlatformOpsPanel() {
       features: tenantFeatures.length ? tenantFeatures : defaultFeatures,
     });
     if (ok) {
-      await loadAdminTenants(searchInput);
+      await loadAdminTenants(searchInput, { filters: buildTenantLoadFilters() });
     }
   };
 
@@ -376,7 +395,7 @@ export default function PlatformOpsPanel() {
     setLocalMessage(null);
     const ok = await revokeAdminLicense(licenseId);
     if (ok) {
-      await loadAdminTenants(searchInput);
+      await loadAdminTenants(searchInput, { filters: buildTenantLoadFilters() });
     }
   };
 
@@ -564,7 +583,7 @@ export default function PlatformOpsPanel() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => void loadAdminTenants(searchInput)}
+                  onClick={() => void loadAdminTenants(searchInput, { filters: buildTenantLoadFilters() })}
                   disabled={isBusy}
                 >
                   <RefreshCw size={18} aria-hidden="true" />
@@ -1037,6 +1056,27 @@ export default function PlatformOpsPanel() {
           })
         )}
       </div>
+
+      {canLoadMoreTenants ? (
+        <div className="platform-load-more">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() =>
+              void loadAdminTenants(searchInput, {
+                append: true,
+                cursor: adminTenantsPageInfo?.nextCursor,
+                filters: buildTenantLoadFilters(),
+              })
+            }
+            disabled={isBusy}
+          >
+            <RefreshCw size={18} aria-hidden="true" />
+            Carica altri tenant
+          </button>
+          <span>Pagina da {adminTenantsPageInfo?.limit ?? 25} tenant.</span>
+        </div>
+      ) : null}
 
       {localMessage && (
         <div

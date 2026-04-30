@@ -5,6 +5,7 @@ import type {
   LicenseStatus,
   SessionsArchiveStatus,
 } from './accessControl';
+import { normalizePageInfo, type PageInfo } from './pagination';
 
 export interface AdminTenantSummary {
   id: string;
@@ -22,6 +23,8 @@ export interface AdminTenantsResponse {
   status: SessionsArchiveStatus;
   message: string | null;
   query: string;
+  pageInfo?: PageInfo | null;
+  appliedFilters?: AdminTenantPageFilters;
 }
 
 export interface AdminLicenseUpsertPayload {
@@ -77,6 +80,16 @@ export interface AdminTenantHistoryResponse {
 export type AdminTenantFilter = 'all' | 'active' | 'expiring' | 'missing' | 'expired' | 'revoked';
 export type AdminTenantSort = 'risk' | 'name' | 'sessions' | 'members' | 'expiry';
 export type AdminTenantTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+export interface AdminTenantPageFilters {
+  query: string;
+  status: AdminTenantFilter;
+  sort: AdminTenantSort;
+  direction: 'asc' | 'desc';
+  warningWindowDays: number;
+  limit: number;
+  cursor: string | null;
+}
 
 export type PlatformOpsStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -393,6 +406,10 @@ export const normalizeAdminTenantsResponse = (payload: unknown): AdminTenantsRes
     status,
     message: asText(record.message),
     query: asText(record.query) ?? '',
+    pageInfo: normalizePageInfo(record.pageInfo),
+    appliedFilters: asRecord(record.appliedFilters)
+      ? (record.appliedFilters as unknown as AdminTenantPageFilters)
+      : undefined,
   };
 };
 
