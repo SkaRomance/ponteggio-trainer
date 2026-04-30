@@ -1,5 +1,6 @@
 import { getAccessResponseForRequest, json } from '../_lib/auth.js';
 import { isDatabaseConfigured, listAdminTenantsPage, recordAuditEvent } from '../_lib/db.js';
+import type { AdminTenantPageFilters } from '../../src/models/platformOps.js';
 
 export const config = {
   runtime: 'edge',
@@ -31,9 +32,9 @@ export default async function handler(request: Request) {
   const query = requestUrl.searchParams.get('query')?.trim() ?? '';
   const page = await listAdminTenantsPage({
     query,
-    status: requestUrl.searchParams.get('status') ?? 'all',
-    sort: requestUrl.searchParams.get('sort') ?? 'risk',
-    direction: requestUrl.searchParams.get('direction') ?? 'asc',
+    status: (requestUrl.searchParams.get('status') ?? 'all') as AdminTenantPageFilters['status'],
+    sort: (requestUrl.searchParams.get('sort') ?? 'risk') as AdminTenantPageFilters['sort'],
+    direction: (requestUrl.searchParams.get('direction') ?? 'asc') as AdminTenantPageFilters['direction'],
     warningWindowDays: Number(requestUrl.searchParams.get('warningWindowDays') ?? ''),
     limit: Number(requestUrl.searchParams.get('limit') ?? ''),
     cursor: requestUrl.searchParams.get('cursor'),

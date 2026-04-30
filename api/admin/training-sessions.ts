@@ -1,5 +1,6 @@
 import { getAccessResponseForRequest, json } from '../_lib/auth.js';
 import { isDatabaseConfigured, listAdminSessionsPage, recordAuditEvent } from '../_lib/db.js';
+import type { PersistedSessionsFilters } from '../../src/models/persistence.js';
 
 export const config = {
   runtime: 'edge',
@@ -30,9 +31,9 @@ export default async function handler(request: Request) {
   const page = await listAdminSessionsPage({
     query: requestUrl.searchParams.get('query') ?? '',
     organizationId: requestUrl.searchParams.get('organizationId'),
-    status: requestUrl.searchParams.get('status') ?? 'all',
-    evidenceMode: requestUrl.searchParams.get('evidenceMode') ?? 'all',
-    startedByRole: requestUrl.searchParams.get('startedByRole') ?? 'all',
+    status: (requestUrl.searchParams.get('status') ?? 'all') as PersistedSessionsFilters['status'],
+    evidenceMode: (requestUrl.searchParams.get('evidenceMode') ?? 'all') as PersistedSessionsFilters['evidenceMode'],
+    startedByRole: (requestUrl.searchParams.get('startedByRole') ?? 'all') as PersistedSessionsFilters['startedByRole'],
     createdFrom: requestUrl.searchParams.get('createdFrom'),
     createdTo: requestUrl.searchParams.get('createdTo'),
     limit: Number(requestUrl.searchParams.get('limit') ?? ''),
