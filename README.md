@@ -30,6 +30,7 @@ That ADR is the source of truth for:
 ```bash
 npm install
 npm run dev
+npm test
 npm run build
 npm run lint
 npm run hash-password -- "my-password"
@@ -47,4 +48,5 @@ npm run hash-password -- "my-password"
 - The app is still a client-rendered SPA, but `/api/*` is now reserved for Vercel Functions and excluded from the SPA fallback rewrite.
 - Premium access can no longer be unlocked from `localStorage`; role and license state are hydrated from the backend contract.
 - The session archive is persistent only when `DATABASE_URL` is configured; without it, auth still works but evidence stays local-only.
+- `npm test` runs zero-dependency Node regression tests for inspection no-hint behavior and admin pagination contracts.
 - Use [.env.example](./.env.example) as the starting point for auth and database variables.

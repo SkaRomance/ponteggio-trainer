@@ -123,8 +123,39 @@ const decodePageCursor = (cursor: string | null | undefined): Record<string, unk
   }
 };
 
-const decodeOffsetCursor = (cursor: string | null | undefined) => {
+const createCursorScope = (values: Record<string, unknown>) =>
+  JSON.stringify(
+    Object.keys(values)
+      .sort()
+      .reduce<Record<string, unknown>>((scope, key) => {
+        scope[key] = values[key] ?? null;
+        return scope;
+      }, {}),
+  );
+
+const createAdminSessionsCursorScope = (filters: PersistedSessionsFilters) =>
+  createCursorScope({
+    query: filters.query,
+    organizationId: filters.organizationId,
+    status: filters.status,
+    evidenceMode: filters.evidenceMode,
+    startedByRole: filters.startedByRole,
+    createdFrom: filters.createdFrom,
+    createdTo: filters.createdTo,
+  });
+
+const createAdminTenantsCursorScope = (filters: AdminTenantPageFilters) =>
+  createCursorScope({
+    query: filters.query,
+    status: filters.status,
+    sort: filters.sort,
+    direction: filters.direction,
+    warningWindowDays: filters.warningWindowDays,
+  });
+
+const decodeOffsetCursor = (cursor: string | null | undefined, expectedScope?: string) => {
   const decoded = decodePageCursor(cursor);
+  if (expectedScope && decoded?.scope !== expectedScope) return 0;
   const offset = Number(decoded?.offset ?? 0);
   return Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
 };
@@ -505,6 +536,7 @@ const buildSessionsQuery = (
     sessions.local_integrity_hash,
     sessions.server_hash,
     sessions.created_at,
+    sessions.created_at::text AS created_at_cursor,
     sessions.updated_at,
     COALESCE(event_counts.event_count, 0)::int AS event_count
   FROM training.training_sessions AS sessions
@@ -1161,9 +1193,11 @@ export const listAdminSessionsPage = async (
     whereParts.push(`sessions.created_at <= ${addQueryParam(params, appliedFilters.createdTo)}::timestamptz`);
   }
 
+  const cursorScope = createAdminSessionsCursorScope(appliedFilters);
   const cursor = decodePageCursor(appliedFilters.cursor);
-  const cursorCreatedAt = typeof cursor?.createdAt === 'string' ? cursor.createdAt : null;
-  const cursorId = typeof cursor?.id === 'string' ? cursor.id : null;
+  const cursorMatchesScope = cursor?.scope === cursorScope;
+  const cursorCreatedAt = cursorMatchesScope && typeof cursor?.createdAt === 'string' ? cursor.createdAt : null;
+  const cursorId = cursorMatchesScope && typeof cursor?.id === 'string' ? cursor.id : null;
   if (cursorCreatedAt && cursorId) {
     const createdAtPlaceholder = addQueryParam(params, cursorCreatedAt);
     const idPlaceholder = addQueryParam(params, cursorId);
@@ -1189,14 +1223,18 @@ export const listAdminSessionsPage = async (
   const visibleSessions = sessions.slice(0, appliedFilters.limit);
   const hasNextPage = sessions.length > appliedFilters.limit;
   const lastVisibleSession = visibleSessions[visibleSessions.length - 1] ?? null;
+  const lastVisibleRow = rows[visibleSessions.length - 1] ?? null;
+  const lastVisibleCreatedAt = lastVisibleRow?.created_at_cursor
+    ? String(lastVisibleRow.created_at_cursor)
+    : lastVisibleSession?.createdAt;
 
   return {
     sessions: visibleSessions,
     pageInfo: createPageInfo(
       appliedFilters.limit,
       hasNextPage,
-      hasNextPage && lastVisibleSession
-        ? encodePageCursor({ createdAt: lastVisibleSession.createdAt, id: lastVisibleSession.id })
+      hasNextPage && lastVisibleSession && lastVisibleCreatedAt
+        ? encodePageCursor({ createdAt: lastVisibleCreatedAt, id: lastVisibleSession.id, scope: cursorScope })
         : null,
     ),
     appliedFilters,
@@ -1278,7 +1316,8 @@ export const listAdminTenantsPage = async (
   }
 
   const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
-  const offset = decodeOffsetCursor(appliedFilters.cursor);
+  const cursorScope = createAdminTenantsCursorScope(appliedFilters);
+  const offset = decodeOffsetCursor(appliedFilters.cursor, cursorScope);
   const rows = await runTenantsQuery(
     whereClause,
     params,
@@ -1295,7 +1334,7 @@ export const listAdminTenantsPage = async (
     pageInfo: createPageInfo(
       appliedFilters.limit,
       hasNextPage,
-      hasNextPage ? encodePageCursor({ offset: offset + appliedFilters.limit }) : null,
+      hasNextPage ? encodePageCursor({ offset: offset + appliedFilters.limit, scope: cursorScope }) : null,
     ),
     appliedFilters,
   };

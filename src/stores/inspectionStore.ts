@@ -63,15 +63,39 @@ const createSeededRandom = (seed: string) => {
   };
 };
 
+const getComponentTypeFromId = (id: string) => id.split('-')[0] as InspectionData['type'];
+const getComponentIndexFromId = (id: string) => Number(id.split('-')[1] ?? 0);
+
+const createProtectedAssemblyStock = (seed: string) => {
+  const random = createSeededRandom(`${seed}:assembly-stock`);
+  const protectedIds = new Set<string>();
+
+  Object.entries(MIN_USABLE_FOR_ASSEMBLY).forEach(([type, requiredCount]) => {
+    const candidates = ALL_COMPONENT_IDS.filter((id) => getComponentTypeFromId(id) === type);
+    const shuffled = [...candidates];
+
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const swapIndex = Math.floor(random() * (i + 1));
+      [shuffled[i], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[i]];
+    }
+
+    shuffled.slice(0, Math.min(requiredCount ?? 0, shuffled.length)).forEach((id) => {
+      protectedIds.add(id);
+    });
+  });
+
+  return protectedIds;
+};
+
 const generateComponentData = (seed: string): Record<string, InspectionData> => {
   const random = createSeededRandom(seed);
+  const protectedAssemblyStock = createProtectedAssemblyStock(seed);
   const components: Record<string, InspectionData> = {};
   
   ALL_COMPONENT_IDS.forEach(id => {
-    const type = id.split('-')[0] as InspectionData['type'];
-    const index = parseInt(id.split('-')[1]);
-    const minUsableForAssembly = MIN_USABLE_FOR_ASSEMBLY[type] ?? 0;
-    const isProtectedAssemblyStock = index < minUsableForAssembly;
+    const type = getComponentTypeFromId(id);
+    const index = getComponentIndexFromId(id);
+    const isProtectedAssemblyStock = protectedAssemblyStock.has(id);
     const isDamaged = !isProtectedAssemblyStock && random() < 0.65;
     const ctInfo = COMPONENT_TYPES.find(ct => ct.type === type);
     
@@ -216,51 +240,34 @@ export function useInspectionStore() {
     
     const inspection = currentInspectionRef.current;
 
-    if (inspection) {
-      logEventRef.current({
-        type: 'component_decision',
-        phase: 'warehouse',
-        payload: {
-          componentId: inspection.id,
-          componentType: inspection.type,
-          decision,
-          correct,
-          wasDamaged: inspection.isDamaged,
-          damageType: inspection.damageType ?? null,
-          scenarioSeed: courseSession.scenarioSeed,
-        },
-      });
-    }
+    if (!inspection || inspectedItemsRef.current.has(inspection.id)) return;
+
+    logEventRef.current({
+      type: 'component_decision',
+      phase: 'warehouse',
+      payload: {
+        componentId: inspection.id,
+        componentType: inspection.type,
+        decision,
+        correct,
+        wasDamaged: inspection.isDamaged,
+        damageType: inspection.damageType ?? null,
+        scenarioSeed: courseSession.scenarioSeed,
+      },
+    });
+
+    const newInspectedItems = new Set(inspectedItemsRef.current);
+    newInspectedItems.add(inspection.id);
+    setInspectedItems(newInspectedItems);
+    inspectedItemsRef.current = newInspectedItems;
     
-    if (correct && inspection) {
+    if (correct) {
       addScoreRef.current(50);
       
-      const newInspectedItems = new Set(inspectedItemsRef.current);
-      newInspectedItems.add(inspection.id);
-      
-      setInspectedItems(newInspectedItems);
-      inspectedItemsRef.current = newInspectedItems;
-      
-      const allInspected = ALL_COMPONENT_IDS.every(id => newInspectedItems.has(id));
-      
-      if (allInspected && !phaseCompleteRef.current) {
-        setPhaseComplete(true);
-        phaseCompleteRef.current = true;
-        pushNoticeRef.current({
-          severity: 'success',
-          title: 'Fase completata',
-          message: 'Tutti i componenti sono stati ispezionati. Passaggio al trasporto in corso.',
-          phase: 'warehouse',
-        });
-        
-        setTimeout(() => {
-          unlockPhaseRef.current('transport');
-          nextPhaseRef.current();
-        }, 2000);
-      }
-      
       if (decision === 'usable' && !inspection.isDamaged) {
-        setLoadedItems([...loadedItemsRef.current, inspection.id]);
+        const nextLoadedItems = Array.from(new Set([...loadedItemsRef.current, inspection.id]));
+        setLoadedItems(nextLoadedItems);
+        loadedItemsRef.current = nextLoadedItems;
       }
     } else {
       addErrorRef.current({
@@ -272,9 +279,27 @@ export function useInspectionStore() {
       pushNoticeRef.current({
         severity: 'error',
         title: 'Valutazione errata',
-        message: 'Il componente e stato classificato in modo non corretto. Rivedi il danno prima di proseguire.',
+        message: 'La valutazione e stata registrata. Il componente resta chiuso: non puoi correggere dopo il feedback.',
         phase: 'warehouse',
       });
+    }
+
+    const allInspected = ALL_COMPONENT_IDS.every(id => newInspectedItems.has(id));
+
+    if (allInspected && !phaseCompleteRef.current) {
+      setPhaseComplete(true);
+      phaseCompleteRef.current = true;
+      pushNoticeRef.current({
+        severity: 'success',
+        title: 'Fase completata',
+        message: 'Tutti i componenti sono stati ispezionati. Passaggio al trasporto in corso.',
+        phase: 'warehouse',
+      });
+
+      setTimeout(() => {
+        unlockPhaseRef.current('transport');
+        nextPhaseRef.current();
+      }, 2000);
     }
   };
 

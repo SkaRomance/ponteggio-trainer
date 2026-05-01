@@ -40,13 +40,21 @@ function WearPatch({ position, scale = [0.55, 0.04, 0.36] }: { position: [number
   );
 }
 
-function Tube({ rotation = [0, 0, Math.PI / 2], damaged = false }: { rotation?: [number, number, number]; damaged?: boolean }) {
+function Tube({
+  rotation = [0, 0, Math.PI / 2],
+  damageType,
+}: {
+  rotation?: [number, number, number];
+  damageType?: InspectionData['damageType'];
+}) {
+  const crushed = damageType === 'schiacciamento' || damageType === 'piegatura';
+
   return (
     <group rotation={rotation}>
       <Cylinder args={[0.12, 0.12, 3.4, 24]} castShadow>
         <meshStandardMaterial color={steel} metalness={0.35} roughness={0.5} />
       </Cylinder>
-      {damaged && (
+      {crushed && (
         <>
           <Box args={[0.34, 0.08, 0.36]} position={[0, 0, 0.25]}>
             <meshStandardMaterial color={grime} roughness={0.9} />
@@ -59,12 +67,10 @@ function Tube({ rotation = [0, 0, Math.PI / 2], damaged = false }: { rotation?: 
 }
 
 function BasePlate({ component }: { component: InspectionData }) {
-  const damaged = component.isDamaged;
-
   return (
     <>
       <Box args={[2, 0.22, 2]} castShadow>
-        <meshStandardMaterial color={damaged ? '#5d5a55' : '#666666'} metalness={0.4} roughness={0.55} />
+        <meshStandardMaterial color="#666666" metalness={0.4} roughness={0.55} />
       </Box>
       <Cylinder args={[0.22, 0.22, 1.05, 24]} position={[0, 0.62, 0]} castShadow>
         <meshStandardMaterial color={darkSteel} metalness={0.45} roughness={0.45} />
@@ -119,12 +125,10 @@ function Frame({ component }: { component: InspectionData }) {
 }
 
 function Platform({ component }: { component: InspectionData }) {
-  const damaged = component.isDamaged;
-
   return (
     <>
       <Box args={[3.1, 0.16, 1.45]} castShadow>
-        <meshStandardMaterial color={damaged ? '#7e807d' : steel} metalness={0.35} roughness={0.62} />
+        <meshStandardMaterial color={steel} metalness={0.35} roughness={0.62} />
       </Box>
       <Box args={[3.1, 0.2, 0.12]} position={[0, 0.14, 0.72]}>
         <meshStandardMaterial color={darkSteel} metalness={0.3} roughness={0.54} />
@@ -258,14 +262,14 @@ function ComponentModel({ component }: { component: InspectionData }) {
     case 'traverso':
     case 'diagonale':
     case 'parapetto':
-      return <Tube damaged={component.isDamaged} rotation={component.type === 'diagonale' ? [0, 0, Math.PI / 3] : [0, 0, Math.PI / 2]} />;
+      return <Tube damageType={component.damageType} rotation={component.type === 'diagonale' ? [0, 0, Math.PI / 3] : [0, 0, Math.PI / 2]} />;
     case 'mantovana':
       return (
         <group rotation={[Math.PI / 5, 0, 0]}>
           <Box args={[2.8, 0.18, 1.3]} castShadow>
             <meshStandardMaterial color="#c8a114" roughness={0.68} metalness={0.15} />
           </Box>
-          {component.isDamaged && <Crack position={[0.55, 0.14, 0.15]} rotation={[0, 0.8, 0]} length={0.82} />}
+          {component.damageType === 'usura' && <Crack position={[0.55, 0.14, 0.15]} rotation={[0, 0.8, 0]} length={0.82} />}
         </group>
       );
     case 'scaletta':
@@ -278,7 +282,7 @@ function ComponentModel({ component }: { component: InspectionData }) {
     default:
       return (
         <Box args={[1.6, 0.6, 1.2]} castShadow>
-          <meshStandardMaterial color={component.isDamaged ? '#77716b' : steel} metalness={0.25} roughness={0.55} />
+          <meshStandardMaterial color={steel} metalness={0.25} roughness={0.55} />
         </Box>
       );
   }
