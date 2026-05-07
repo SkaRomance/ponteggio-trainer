@@ -46,6 +46,14 @@ export default function RuntimeBridge() {
             healthDelta: phaseScore.endHealth - phaseScore.startHealth,
           })),
           eventLogEntries: state.eventLog.length,
+          activeKnowledgeCheck: state.activeSafetyQuiz
+            ? {
+                questionId: state.activeSafetyQuiz.question.id,
+                topic: state.activeSafetyQuiz.question.topic,
+                phase: state.activeSafetyQuiz.phase,
+              }
+            : null,
+          knowledgeChecksAnswered: state.safetyQuizResults.length,
         },
         logistics: {
           loadedItems: state.loadedItems.length,

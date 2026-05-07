@@ -35,6 +35,15 @@ TODO
 - Valutare in un commit successivo il code-splitting Vite: il bundle JS supera ancora il warning dei 500 kB.
 - Per un accreditamento formale servono ancora revisione legale/didattica, eventuale firma digitale/persistenza server-side delle evidenze e prove in visore VR reale.
 
+2026-05-07 - Wave audio e knowledge check
+- Avviata implementazione caveman con agenti paralleli per audio, scene hook, quiz didattici e a11y.
+- Scelta architettura senza nuove dipendenze: WebAudio generativo per musica/SFX e `speechSynthesis` per voci.
+- Aggiunta banca domande safety quiz a due opzioni con copertura ampia: DPI, segnaletica, Pi.M.U.S., carichi, meteo, elettrico, stoccaggio, emergenze, ruoli, smontaggio.
+- Aggiunto stato quiz nello store: intermezzi random seed-based, massimo per sessione, pausa gameplay, audit eventi, bonus se corretto e nessuna penalita salute se errato.
+- Aggiunti controller audio, controlli visibili Audio/Voci, modal quiz accessibile, evidence in report e contratti test statici.
+- Verifiche passate: `npm test`, `npm run lint`, `npm run build`.
+- Smoke Playwright: menu + avvio sessione + quiz forzato, zero console errori; `render_game_to_text` registra `knowledgeChecksAnswered: 1`.
+
 Next wave proposed (2026-04-28)
 - Portare auth e licenze da bootstrap env-driven a modello DB-first con bootstrap usato solo come seed iniziale o recovery path.
 - Introdurre hardening auth: `bcrypt`/`argon2id`, rate limiting login, audit log successo/fallimento, invalidazione coerente di account/licenze revocati.

@@ -75,11 +75,16 @@ export default function VideoTutorial({ videoId, title, onClose, onComplete }: V
 
   return (
     <div className="video-tutorial-overlay tutorial-overlay">
-      <div className="video-tutorial-container tutorial-panel">
+      <div
+        className="video-tutorial-container tutorial-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="video-tutorial-title"
+      >
         <div className="video-header tutorial-panel-header">
           <div>
             <p className="score-label">Mars Compliance</p>
-            <h3>
+            <h3 id="video-tutorial-title">
               {tutorialTitleId ? (
                 <FormattedMessage id={tutorialTitleId} defaultMessage={title} />
               ) : (
@@ -169,9 +174,14 @@ export function TutorialMenu({ onSelect, onClose }: { onSelect: (id: string) => 
 
   return (
     <div className="video-tutorial-overlay tutorial-overlay">
-      <div className="tutorial-menu-container tutorial-panel">
+      <div
+        className="tutorial-menu-container tutorial-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tutorial-menu-title"
+      >
         <div className="video-header tutorial-panel-header">
-          <h3>
+          <h3 id="tutorial-menu-title">
             <FormattedMessage id="tutorial.menu.title" defaultMessage="Video tutorial" />
           </h3>
           <button type="button" className="close-btn" aria-label="Chiudi menu tutorial" onClick={onClose}>

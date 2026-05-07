@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "node --test tests/admin-pagination-contract.test.mjs tests/inspection-no-hint.test.mjs",
+    "test": "node --test tests/admin-pagination-contract.test.mjs tests/inspection-no-hint.test.mjs tests/audio-quiz-contract.test.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "hash-password": "node scripts/hash-password.mjs"

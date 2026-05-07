@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import type { Locale } from '../i18n';
 import {
+  pickSafetyQuizQuestion,
+  shouldTriggerSafetyQuiz,
+  type SafetyQuizOptionId,
+  type SafetyQuizQuestion,
+} from '../data/safetyQuiz';
+import {
   canViewAllSessions,
   createAccessApiResponse,
   createAnonymousIdentity,
@@ -102,7 +108,9 @@ export interface TrainingEvent {
     | 'error_recorded'
     | 'component_decision'
     | 'notice_recorded'
-    | 'procedure_action';
+    | 'procedure_action'
+    | 'knowledge_check_presented'
+    | 'knowledge_check_answered';
   phase: GamePhase;
   timestamp: number;
   payload: Record<string, string | number | boolean | null>;
@@ -121,6 +129,25 @@ export interface GameNotice {
   severity: NoticeSeverity;
   phase?: GamePhase;
   persistent?: boolean;
+  timestamp: number;
+}
+
+export interface ActiveSafetyQuiz {
+  question: SafetyQuizQuestion;
+  trigger: string;
+  phase: GamePhase;
+  openedAt: number;
+}
+
+export interface SafetyQuizResult {
+  questionId: string;
+  topic: SafetyQuizQuestion['topic'];
+  selectedOptionId: SafetyQuizOptionId;
+  correct: boolean;
+  phase: GamePhase;
+  trigger: string;
+  scoreDelta: number;
+  latencyMs: number;
   timestamp: number;
 }
 
@@ -167,6 +194,12 @@ export interface GameState {
   isCourseSessionReady: () => boolean;
   eventLog: TrainingEvent[];
   logEvent: (event: Omit<TrainingEvent, 'id' | 'timestamp'>) => void;
+  activeSafetyQuiz: ActiveSafetyQuiz | null;
+  answeredSafetyQuizIds: string[];
+  safetyQuizResults: SafetyQuizResult[];
+  lastSafetyQuizAt: number;
+  maybeTriggerSafetyQuiz: (trigger: string, force?: boolean) => void;
+  answerSafetyQuiz: (optionId: SafetyQuizOptionId) => void;
 
   currentPhase: GamePhase;
   setPhase: (phase: GamePhase) => void;
@@ -249,7 +282,16 @@ const severityPenalty: Record<ErrorSeverity, number> = {
   low: 5,
 };
 
+const SAFETY_QUIZ_COOLDOWN_MS = 25_000;
+const SAFETY_QUIZ_CORRECT_POINTS = 35;
+const SAFETY_QUIZ_MAX_BY_MODE: Record<CourseSession['mode'], number> = {
+  demo: 2,
+  full: 6,
+};
+
 const isAuditablePhase = (phase: GamePhase) => phase !== 'menu' && phase !== 'completed';
+
+const canTriggerSafetyQuizFromEvent = (eventType: TrainingEvent['type']) => eventType === 'procedure_action';
 
 const createSessionId = () => {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -1124,10 +1166,134 @@ export const useGameStore = create<GameState>((set, get) => {
       );
     },
     eventLog: [],
-    logEvent: (event) =>
+    logEvent: (event) => {
+      const trainingEvent = createTrainingEvent(event);
       set((state) => ({
-        eventLog: [...state.eventLog, createTrainingEvent(event)],
-      })),
+        eventLog: [...state.eventLog, trainingEvent],
+      }));
+
+      if (canTriggerSafetyQuizFromEvent(event.type)) {
+        queueMicrotask(() => {
+          get().maybeTriggerSafetyQuiz(`${event.type}:${trainingEvent.id}`);
+        });
+      }
+    },
+    activeSafetyQuiz: null,
+    answeredSafetyQuizIds: [],
+    safetyQuizResults: [],
+    lastSafetyQuizAt: 0,
+    maybeTriggerSafetyQuiz: (trigger, force = false) => {
+      const state = get();
+      const now = Date.now();
+      const maxChecks = SAFETY_QUIZ_MAX_BY_MODE[state.courseSession.mode];
+      const phaseTransitionTrigger = trigger.startsWith('phase:');
+      const firstMandatoryTransition = phaseTransitionTrigger && state.safetyQuizResults.length === 0;
+
+      if (
+        !state.isPlaying ||
+        state.isPaused ||
+        state.activeSafetyQuiz ||
+        !isAuditablePhase(state.currentPhase) ||
+        state.safetyQuizResults.length >= maxChecks
+      ) {
+        return;
+      }
+
+      if (!force && !firstMandatoryTransition && now - state.lastSafetyQuizAt < SAFETY_QUIZ_COOLDOWN_MS) {
+        return;
+      }
+
+      const chance = phaseTransitionTrigger ? 0.42 : 0.22;
+      const salt = `${trigger}:${state.currentPhase}:${state.eventLog.length}`;
+      if (!force && !firstMandatoryTransition && !shouldTriggerSafetyQuiz(state.courseSession.scenarioSeed, salt, chance)) {
+        return;
+      }
+
+      const question = pickSafetyQuizQuestion(
+        state.courseSession.scenarioSeed,
+        state.answeredSafetyQuizIds,
+        state.currentPhase,
+        salt,
+      );
+      if (!question) return;
+
+      const activeQuiz: ActiveSafetyQuiz = {
+        question,
+        trigger,
+        phase: state.currentPhase,
+        openedAt: now,
+      };
+
+      set((currentState) => ({
+        activeSafetyQuiz: activeQuiz,
+        isPaused: true,
+        lastSafetyQuizAt: now,
+        eventLog: [
+          ...currentState.eventLog,
+          createTrainingEvent({
+            type: 'knowledge_check_presented',
+            phase: state.currentPhase,
+            payload: {
+              questionId: question.id,
+              topic: question.topic,
+              trigger,
+            },
+          }),
+        ],
+      }));
+    },
+    answerSafetyQuiz: (optionId) => {
+      const activeQuiz = get().activeSafetyQuiz;
+      if (!activeQuiz) return;
+
+      const selectedOption = activeQuiz.question.options.find((candidate) => candidate.id === optionId);
+      if (!selectedOption) return;
+
+      const now = Date.now();
+      const scoreDelta = selectedOption.correct ? SAFETY_QUIZ_CORRECT_POINTS : 0;
+      const result: SafetyQuizResult = {
+        questionId: activeQuiz.question.id,
+        topic: activeQuiz.question.topic,
+        selectedOptionId: optionId,
+        correct: selectedOption.correct,
+        phase: activeQuiz.phase,
+        trigger: activeQuiz.trigger,
+        scoreDelta,
+        latencyMs: now - activeQuiz.openedAt,
+        timestamp: now,
+      };
+
+      set((state) => ({
+        activeSafetyQuiz: null,
+        isPaused: false,
+        answeredSafetyQuizIds: [...new Set([...state.answeredSafetyQuizIds, activeQuiz.question.id])],
+        safetyQuizResults: [...state.safetyQuizResults, result],
+      }));
+
+      if (selectedOption.correct) {
+        get().addScore(scoreDelta);
+      }
+
+      get().logEvent({
+        type: 'knowledge_check_answered',
+        phase: activeQuiz.phase,
+        payload: {
+          questionId: activeQuiz.question.id,
+          topic: activeQuiz.question.topic,
+          selectedOptionId: optionId,
+          correct: selectedOption.correct,
+          scoreDelta,
+          latencyMs: result.latencyMs,
+        },
+      });
+
+      get().pushNotice({
+        severity: selectedOption.correct ? 'success' : 'warning',
+        title: selectedOption.correct ? 'Risposta corretta' : 'Ripasso necessario',
+        message: selectedOption.rationale,
+        phase: activeQuiz.phase,
+      });
+    },
 
     currentPhase: 'menu',
     setPhase: (phase) => {
@@ -1180,6 +1346,8 @@ export const useGameStore = create<GameState>((set, get) => {
           set({
             currentPhase: 'completed',
             isPlaying: false,
+            isPaused: false,
+            activeSafetyQuiz: null,
             phaseAuditStart: null,
             courseSession: completeSession(state.courseSession),
             eventLog: [
@@ -1202,6 +1370,8 @@ export const useGameStore = create<GameState>((set, get) => {
           set({
             currentPhase: 'completed',
             isPlaying: false,
+            isPaused: false,
+            activeSafetyQuiz: null,
             phaseAuditStart: null,
             courseSession: completeSession(state.courseSession),
             eventLog: [
@@ -1229,11 +1399,16 @@ export const useGameStore = create<GameState>((set, get) => {
             isStrapped: current === 'warehouse' && next === 'transport' ? false : state.isStrapped,
             weightBalance: current === 'warehouse' && next === 'transport' ? 0 : state.weightBalance,
           });
+          queueMicrotask(() => {
+            get().maybeTriggerSafetyQuiz(`phase:${current}->${next}`);
+          });
         }
       } else {
         set({
           currentPhase: 'completed',
           isPlaying: false,
+          isPaused: false,
+          activeSafetyQuiz: null,
           phaseAuditStart: null,
           courseSession: completeSession(state.courseSession),
           eventLog: [
@@ -1378,6 +1553,10 @@ export const useGameStore = create<GameState>((set, get) => {
         completedPhases: [],
         notices: [],
         eventLog: [sessionStartEvent],
+        activeSafetyQuiz: null,
+        answeredSafetyQuizIds: [],
+        safetyQuizResults: [],
+        lastSafetyQuizAt: 0,
         phaseAuditStart: { phase: 'warehouse', health: 100, score: 0 },
         persistedSessionId: null,
         serverEvidenceHash: null,
@@ -1414,6 +1593,8 @@ export const useGameStore = create<GameState>((set, get) => {
 
       set({
         isPlaying: false,
+        isPaused: false,
+        activeSafetyQuiz: null,
         courseSession: completeSession(state.courseSession),
         phaseScores: failedPhaseScore
           ? [...state.phaseScores, failedPhaseScore].sort(
@@ -1471,6 +1652,10 @@ export const useGameStore = create<GameState>((set, get) => {
         completedPhases: [],
         notices: [],
         eventLog: [],
+        activeSafetyQuiz: null,
+        answeredSafetyQuizIds: [],
+        safetyQuizResults: [],
+        lastSafetyQuizAt: 0,
         phaseAuditStart: null,
         sessionRunId: state.sessionRunId + 1,
         persistedSessionId: null,

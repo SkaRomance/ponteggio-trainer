@@ -61,6 +61,7 @@ export default function StorageScene() {
     addError,
     addScore,
     pushNotice,
+    logEvent,
   } = useGameStore();
   const [blocks, setBlocks] = useState<StorageBlockState[]>(() =>
     Object.entries(storageLocations).map(([itemId, pos]) => ({
@@ -73,6 +74,15 @@ export default function StorageScene() {
   const itemsInTruck = useMemo(() => loadedItems.filter((id) => !storageLocations[id]), [loadedItems, storageLocations]);
 
   const handleSelectItem = (id: string) => {
+    logEvent({
+      type: 'procedure_action',
+      phase: 'storage',
+      payload: {
+        action: 'select_storage_item',
+        componentId: id,
+        selected: id !== selectedItemId,
+      },
+    });
     setSelectedItemId(id === selectedItemId ? null : id);
   };
 
@@ -117,6 +127,15 @@ export default function StorageScene() {
 
     setBlocks((prev) => [...prev, { pos: [p.x, 0.1, p.z], itemId: null }]);
     addScore(15);
+    logEvent({
+      type: 'procedure_action',
+      phase: 'storage',
+      payload: {
+        action: 'place_storage_block',
+        x: Number(p.x.toFixed(2)),
+        z: Number(p.z.toFixed(2)),
+      },
+    });
   };
 
   const handleStoreOnBlock = (blockIndex: number) => {
@@ -141,6 +160,15 @@ export default function StorageScene() {
     });
     setSelectedItemId(null);
     addScore(40);
+    logEvent({
+      type: 'procedure_action',
+      phase: 'storage',
+      payload: {
+        action: 'store_component_on_block',
+        componentId: selectedItemId,
+        blockIndex,
+      },
+    });
   };
 
   const handleFinishPhase = () => {

@@ -2115,6 +2115,7 @@ body {
 
 .overlay-container,
 .inspection-overlay,
+.safety-quiz-overlay,
 .video-tutorial-overlay,
 .tutorial-overlay,
 .demo-end-overlay {
@@ -2127,6 +2128,165 @@ body {
   backdrop-filter: blur(10px);
   z-index: 1000;
   padding: 2rem;
+}
+
+.audio-control-panel {
+  position: fixed;
+  top: 5.5rem;
+  left: 1.5rem;
+  z-index: 940;
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.4rem;
+  border: 1px solid rgba(45, 106, 79, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(12px);
+}
+
+.audio-toggle {
+  min-height: 2.25rem;
+  border: 1px solid var(--mars-border);
+  border-radius: 999px;
+  background: var(--mars-white);
+  color: var(--mars-green);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0.45rem 0.75rem;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.audio-toggle[aria-pressed='true'] {
+  background: linear-gradient(135deg, var(--mars-green), var(--mars-green-light));
+  border-color: transparent;
+  color: var(--mars-white);
+}
+
+.audio-toggle:hover:not(:disabled),
+.audio-toggle:focus-visible {
+  border-color: var(--mars-green);
+  outline: 3px solid rgba(45, 106, 79, 0.16);
+  outline-offset: 2px;
+  transform: translateY(-1px);
+}
+
+.audio-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.safety-quiz-overlay {
+  z-index: 1250;
+}
+
+.safety-quiz-modal {
+  width: min(680px, calc(100vw - 2rem));
+  border: 1px solid rgba(45, 106, 79, 0.25);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 102, 0, 0.16), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(250, 249, 247, 0.96));
+  box-shadow: var(--shadow-modal);
+  padding: clamp(1.3rem, 3vw, 2.25rem);
+  color: var(--mars-dark);
+}
+
+.safety-quiz-kicker {
+  display: inline-flex;
+  margin-bottom: 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 102, 0, 0.12);
+  color: var(--safety-orange);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.65rem;
+}
+
+.safety-quiz-modal h2 {
+  margin: 0;
+  color: var(--mars-green);
+  font-family: var(--font-serif);
+  font-size: clamp(1.6rem, 4vw, 2.45rem);
+  letter-spacing: -0.04em;
+}
+
+.safety-quiz-modal p {
+  color: var(--mars-text-secondary);
+  line-height: 1.55;
+}
+
+.safety-quiz-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.safety-quiz-meta span {
+  border: 1px solid var(--mars-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--mars-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.35rem 0.65rem;
+}
+
+.safety-quiz-options {
+  display: grid;
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+
+.safety-quiz-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.85rem;
+  align-items: center;
+  width: 100%;
+  min-height: 4.1rem;
+  border: 1px solid rgba(45, 106, 79, 0.22);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--mars-dark);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.35;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.safety-quiz-option:hover,
+.safety-quiz-option:focus-visible {
+  border-color: var(--mars-green);
+  box-shadow: var(--shadow-card);
+  outline: 3px solid rgba(45, 106, 79, 0.16);
+  outline-offset: 2px;
+  transform: translateY(-2px);
+}
+
+.safety-quiz-option-key {
+  display: inline-grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--mars-green);
+  color: var(--mars-white);
+  font-weight: 900;
+}
+
+.safety-quiz-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.86rem;
 }
 
 .overlay-content,
@@ -3197,6 +3357,17 @@ select:focus-visible {
     margin: 0 1rem 1rem;
   }
 
+  .audio-control-panel {
+    position: static;
+    margin: 0.75rem 1rem 0;
+    flex-wrap: wrap;
+    border-radius: 18px;
+  }
+
+  .audio-toggle {
+    flex: 1 1 130px;
+  }
+
   .start-menu {
     padding: 1rem;
   }
@@ -3315,13 +3486,15 @@ select:focus-visible {
 
   .game-header,
   .phase-nav,
+  .audio-control-panel,
   .scene-container,
   .instructions-panel,
   .phase-briefing,
   .notice-center,
   .runtime-controls,
   .start-btn,
-  .btn-secondary {
+  .btn-secondary,
+  .safety-quiz-overlay {
     display: none !important;
   }
 

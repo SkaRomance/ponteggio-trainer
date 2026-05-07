@@ -8,6 +8,13 @@ const isTypingTarget = (target: EventTarget | null) => {
   return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
 };
 
+const hasBlockingOverlay = () =>
+  Boolean(
+    document.querySelector(
+      '[role="dialog"], .inspection-overlay, .video-tutorial-overlay, .tutorial-overlay, .safety-quiz-overlay',
+    ),
+  );
+
 const toggleDocumentFullscreen = async () => {
   if (document.fullscreenElement) {
     await document.exitFullscreen();
@@ -40,6 +47,7 @@ export default function TrainingRuntimeControls() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
+      if (hasBlockingOverlay()) return;
       if (event.key.toLowerCase() !== 'f') return;
 
       event.preventDefault();

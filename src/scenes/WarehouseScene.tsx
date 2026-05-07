@@ -9,6 +9,19 @@ const MARS_PRIMARY = '#1a472a';
 const MARS_ACCENT = '#2d6a4f';
 const MARS_MUTED = '#555555';
 
+const isTypingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+};
+
+const hasBlockingOverlay = () =>
+  Boolean(
+    document.querySelector(
+      '[role="dialog"], .inspection-overlay, .video-tutorial-overlay, .tutorial-overlay, .safety-quiz-overlay',
+    ),
+  );
+
 interface ScaffoldingComponentProps {
   position: Vector3;
   onClick: () => void;
@@ -192,6 +205,7 @@ export default function WarehouseScene({ inspection }: WarehouseSceneProps) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || isTypingTarget(e.target) || hasBlockingOverlay()) return;
       if (e.key.toLowerCase() === 'e' && nearbyItemRef.current && !showInspectionRef.current) {
         handleInspect(nearbyItemRef.current);
       }

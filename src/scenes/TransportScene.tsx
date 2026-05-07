@@ -82,6 +82,7 @@ export default function TransportScene() {
     addError,
     addScore,
     pushNotice,
+    logEvent,
     isStrapped,
     setStrapped,
     weightBalance,
@@ -113,6 +114,15 @@ export default function TransportScene() {
   }, [itemsOnTruck, setWeightBalance]);
 
   const handleLoadItem = (id: string) => {
+    logEvent({
+      type: 'procedure_action',
+      phase: 'transport',
+      payload: {
+        action: 'select_load_item',
+        componentId: id,
+        selected: id !== selectedItemId,
+      },
+    });
     setSelectedItemId(id === selectedItemId ? null : id);
   };
 
@@ -129,6 +139,16 @@ export default function TransportScene() {
       setSelectedItemId(null);
       setStrapped(false);
       addScore(25);
+      logEvent({
+        type: 'procedure_action',
+        phase: 'transport',
+        payload: {
+          action: 'load_on_truck',
+          componentId: selectedItemId,
+          x: Number(point.x.toFixed(2)),
+          z: Number(point.z.toFixed(2)),
+        },
+      });
       pushNotice({
         severity: 'info',
         title: 'Carico aggiornato',
@@ -295,6 +315,15 @@ export default function TransportScene() {
               onClick={() => {
                 const nextStrappedState = !isStrapped;
                 setStrapped(nextStrappedState);
+                logEvent({
+                  type: 'procedure_action',
+                  phase: 'transport',
+                  payload: {
+                    action: 'toggle_transport_strap',
+                    strapped: nextStrappedState,
+                    loadedCount: transportTruckItems.length,
+                  },
+                });
                 pushNotice({
                   severity: 'info',
                   title: nextStrappedState ? 'Fissaggio confermato' : 'Fissaggio rimosso',

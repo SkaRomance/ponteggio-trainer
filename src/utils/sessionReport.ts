@@ -35,6 +35,16 @@ export interface TrainingSessionReport {
     healthDelta: number | null;
     errorCodes: string[];
   }>;
+  knowledgeChecks: Array<{
+    questionId: string;
+    topic: string;
+    phase: GamePhase;
+    selectedOptionId: string;
+    correct: boolean;
+    scoreDelta: number;
+    latencyMs: number;
+    timestamp: string;
+  }>;
   errors: Array<{
     code: string;
     severity: string;
@@ -144,6 +154,16 @@ export const buildTrainingSessionReport = (state: GameState): TrainingSessionRep
       messageKey: error.messageKey,
       timestamp: new Date(error.timestamp).toISOString(),
     })),
+    knowledgeChecks: state.safetyQuizResults.map((result) => ({
+      questionId: result.questionId,
+      topic: result.topic,
+      phase: result.phase,
+      selectedOptionId: result.selectedOptionId,
+      correct: result.correct,
+      scoreDelta: result.scoreDelta,
+      latencyMs: result.latencyMs,
+      timestamp: new Date(result.timestamp).toISOString(),
+    })),
     events: state.eventLog.map((event) => ({
       type: event.type,
       phase: event.phase,
@@ -198,6 +218,18 @@ export const buildTrainingSessionCsv = (report: TrainingSessionReport) => {
       error.phase,
       error.timestamp,
       error.messageKey,
+    ]),
+    [],
+    ['Knowledge check', 'Topic', 'Fase', 'Risposta', 'Corretta', 'Punti', 'Latenza ms', 'Timestamp'],
+    ...report.knowledgeChecks.map((check) => [
+      check.questionId,
+      check.topic,
+      check.phase,
+      check.selectedOptionId,
+      check.correct ? 'si' : 'no',
+      check.scoreDelta,
+      check.latencyMs,
+      check.timestamp,
     ]),
     [],
     ['Evento', 'Fase', 'Timestamp', 'Payload'],

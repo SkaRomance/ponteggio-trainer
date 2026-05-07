@@ -23,6 +23,8 @@ import DemoEndOverlay from './components/ui/DemoEndOverlay';
 import RuntimeBridge from './components/game/RuntimeBridge';
 import XRSessionBridge from './components/game/XRSessionBridge';
 import TrainingRuntimeControls from './components/game/TrainingRuntimeControls';
+import GameAudioController from './components/game/GameAudioController';
+import SafetyQuizModal from './components/game/SafetyQuizModal';
 import SessionReportActions from './components/ui/SessionReportActions';
 
 // Scenes
@@ -75,6 +77,7 @@ function App() {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
         <RuntimeBridge />
+        <GameAudioController />
         <StartMenu />
       </IntlProvider>
     );
@@ -85,6 +88,7 @@ function App() {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
         <RuntimeBridge />
+        <GameAudioController />
         <div className="overlay-container">
           <div className="overlay-content" data-variant="danger">
             <h1>
@@ -111,6 +115,7 @@ function App() {
     return (
       <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
         <RuntimeBridge />
+        <GameAudioController />
         <div className="overlay-container">
           <div className="overlay-content">
             <h1>
@@ -136,6 +141,7 @@ function App() {
   return (
     <IntlProvider locale={locale} messages={messages[locale as keyof typeof messages]}>
       <RuntimeBridge />
+      <GameAudioController />
       <div className="game-container" dir={getDirection(locale)}>
         {/* Header UI */}
         <header className="game-header">
@@ -275,6 +281,7 @@ function App() {
             onDecision={(decision, correct) => inspection.handleInspectionComplete(decision, correct)}
           />
         )}
+        <SafetyQuizModal />
       </div>
     </IntlProvider>
   );
