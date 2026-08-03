@@ -1,0 +1,86 @@
+:root {
+  /* Brand Colors */
+  --mars-green: #1a472a;
+  --mars-green-light: #2d6a4f;
+  --mars-green-pale: #e8f5e9;
+  --mars-cream: #f5f2ed;
+  --mars-light-cream: #faf9f7;
+  --mars-dark: #0a0a0a;
+  --mars-charcoal: #333333;
+  --mars-text-secondary: #555555;
+  --mars-border: #d1cdc7;
+  --mars-white: #ffffff;
+
+  /* Safety Colors — REALISTIC, never override for UI theming */
+  --safety-yellow: #FFD700;
+  --safety-orange: #FF6600;
+  --safety-red: #DC2626;
+  --safety-blue: #2563EB;
+  --safety-green: #16A34A;
+  --safety-white: #F3F4F6;
+  --safety-black: #111827;
+
+  /* Semantic mappings */
+  --color-primary: var(--mars-green);
+  --color-primary-hover: var(--mars-green-light);
+  --color-primary-pale: var(--mars-green-pale);
+  --color-bg: var(--mars-cream);
+  --color-surface: var(--mars-light-cream);
+  --color-surface-elevated: var(--mars-white);
+  --color-text: var(--mars-dark);
+  --color-text-secondary: var(--mars-text-secondary);
+  --color-border: var(--mars-border);
+
+  /* Typography */
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.10);
+  --shadow-modal: 0 12px 48px rgba(0, 0, 0, 0.12);
+  --shadow-toast: 0 8px 32px rgba(0, 0, 0, 0.15);
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-progress: 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Layout */
+  --header-height: 64px;
+  --max-content-width: 720px;
+  --max-hero-width: 960px;
+}
+
+/* Dark mode support (optional) */
+[data-theme="dark"] {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-elevated: #334155;
+  --color-text: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-border: #475569;
+  --color-primary: #22c55e;
+  --color-primary-hover: #4ade80;
+  --color-primary-pale: #14532d;
+}
